@@ -2905,6 +2905,16 @@ table tbody td.lh0
 	max-width: calc(100% - 84px);
 }
 
+.menu-simple-text.reading-chips
+{
+	min-height: 32px;
+	height: inherit;
+	padding-top: 8px;
+	display: flex;
+	flex-wrap: wrap;
+	margin-bottom: -8px;
+}
+
 .reading-chips .chip
 {
 	float: left;

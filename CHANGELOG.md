@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v2.0.1 (dd-mm-yyyy)
+
+##### 🐛 Bug Fixes
+
+- UI layout breaks and overflows with long localized labels
+
+
 ## [v2.0.0](https://github.com/ollm/OpenComic/releases/tag/v2.0.0) (14-11-2026)
 
 ##### 🚀 New Features

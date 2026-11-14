@@ -13,14 +13,14 @@
 				<div class="menu-simple-element menu-simple-element-little sort-last-modified gamepad-item{{#compare page.sort '==' 'last-modified'}} s{{/compare}}" onclick="dom.changeSort(1, 'last-modified', '{{page.name}}')">{{language.global.sort.lastModified}}</div>
 				<div class="menu-simple-element menu-simple-element-little sort-shuffle gamepad-item{{#compare page.sort '==' 'shuffle'}} s{{/compare}}" onclick="dom.sort.generateShuffle(); dom.changeSort(1, 'shuffle', '{{page.name}}')">{{language.global.sort.shuffle}}</div>
 				<div class="menu-simple-text gamepad-item">
-					{{language.global.sort.foldersFirst}}
+					<span>{{language.global.sort.foldersFirst}}</span>
 					<div class="switch{{#if page.foldersFirst}} a{{/if}}" on="dom.changeSort(3, true, false)" off="dom.changeSort(3, false, false)">
 						<div></div>
 						<svg viewBox="0 0 52 32"><path d="M 8,0 C 3.58,0 0,3.58 0,8 0,12.42 3.58,16 8,16 8,16 8,16 8,16 12.42,16 16,12.42 16,8 16,3.58 12.42,0 8,0 8,0 8,0 8,0 Z"></path></svg>
 					</div>
 				</div>
 				<div class="menu-simple-text gamepad-item">
-					{{language.global.sort.compressedFirst}}
+					<span>{{language.global.sort.compressedFirst}}</span>
 					<div class="switch{{#if page.compressedFirst}} a{{/if}}" on="dom.changeSort(4, true, false)" off="dom.changeSort(4, false, false)">
 						<div></div>
 						<svg viewBox="0 0 52 32"><path d="M 8,0 C 3.58,0 0,3.58 0,8 0,12.42 3.58,16 8,16 8,16 8,16 8,16 12.42,16 16,12.42 16,8 16,3.58 12.42,0 8,0 8,0 8,0 8,0 Z"></path></svg>
@@ -32,7 +32,7 @@
 				<div class="menu-simple-element menu-simple-element-little sort-shuffle gamepad-item{{#compare page.sort '==' 'shuffle'}} s{{/compare}}" onclick="dom.sort.generateShuffle(); dom.changeSort(1, 'shuffle', '{{page.name}}')">{{language.global.sort.shuffle}}</div>
 				{{/compare}}
 				<div class="menu-simple-text gamepad-item">
-					{{language.global.sort.invert}}
+					<span>{{language.global.sort.invert}}</span>
 					<div class="switch{{#if page.sortInvert}} a{{/if}}" on="dom.changeSort(2, true, '{{page.name}}')" off="dom.changeSort(2, false, '{{page.name}}')">
 						<div></div>
 						<svg viewBox="0 0 52 32"><path d="M 8,0 C 3.58,0 0,3.58 0,8 0,12.42 3.58,16 8,16 8,16 8,16 8,16 12.42,16 16,12.42 16,8 16,3.58 12.42,0 8,0 8,0 8,0 8,0 Z"></path></svg>
@@ -67,14 +67,14 @@
 
 				{{#if page.boxes}}
 				<div class="menu-simple-text gamepad-item">
-					{{language.comics.continueReading}}
+					<span>{{language.comics.continueReading}}</span>
 					<div class="switch{{#if page.continueReading}} a{{/if}}" on="dom.changeBoxes('continueReading', true, '{{page.name}}')" off="dom.changeBoxes('continueReading', false, '{{page.name}}')">
 						<div></div>
 						<svg viewBox="0 0 52 32"><path d="M 8,0 C 3.58,0 0,3.58 0,8 0,12.42 3.58,16 8,16 8,16 8,16 8,16 12.42,16 16,12.42 16,8 16,3.58 12.42,0 8,0 8,0 8,0 8,0 Z"></path></svg>
 					</div>
 				</div>
 				<div class="menu-simple-text gamepad-item">
-					{{language.comics.recentlyAdded}}
+					<span>{{language.comics.recentlyAdded}}</span>
 					<div class="switch{{#if page.recentlyAdded}} a{{/if}}" on="dom.changeBoxes('recentlyAdded', true, '{{page.name}}')" off="dom.changeBoxes('recentlyAdded', false, '{{page.name}}')">
 						<div></div>
 						<svg viewBox="0 0 52 32"><path d="M 8,0 C 3.58,0 0,3.58 0,8 0,12.42 3.58,16 8,16 8,16 8,16 8,16 12.42,16 16,12.42 16,8 16,3.58 12.42,0 8,0 8,0 8,0 8,0 Z"></path></svg>
@@ -85,7 +85,7 @@
 				<div class="menu-simple-separator"></div>
 
 				<div class="menu-simple-text gamepad-item">
-					{{language.global.view.fadeCompleted}}
+					<span>{{language.global.view.fadeCompleted}}</span>
 					<div class="switch{{#if page.fadeCompleted}} a{{/if}}" on="dom.changeConfig('fadeCompleted', true, '{{page.name}}')" off="dom.changeConfig('fadeCompleted', false, '{{page.name}}')">
 						<div></div>
 						<svg viewBox="0 0 52 32"><path d="M 8,0 C 3.58,0 0,3.58 0,8 0,12.42 3.58,16 8,16 8,16 8,16 8,16 12.42,16 16,12.42 16,8 16,3.58 12.42,0 8,0 8,0 8,0 8,0 Z"></path></svg>
@@ -93,7 +93,7 @@
 				</div>
 
 				<div class="menu-simple-text gamepad-item">
-					{{language.global.view.progressBar}}
+					<span>{{language.global.view.progressBar}}</span>
 					<div class="switch{{#if page.progressBar}} a{{/if}}" on="dom.changeConfig('progressBar', true, '{{page.name}}')" off="dom.changeConfig('progressBar', false, '{{page.name}}')">
 						<div></div>
 						<svg viewBox="0 0 52 32"><path d="M 8,0 C 3.58,0 0,3.58 0,8 0,12.42 3.58,16 8,16 8,16 8,16 8,16 12.42,16 16,12.42 16,8 16,3.58 12.42,0 8,0 8,0 8,0 8,0 Z"></path></svg>
@@ -101,7 +101,7 @@
 				</div>
 
 				<div class="menu-simple-text gamepad-item">
-					{{language.global.view.progressPages}}
+					<span>{{language.global.view.progressPages}}</span>
 					<div class="switch{{#if page.progressPages}} a{{/if}}" on="dom.changeConfig('progressPages', true, '{{page.name}}')" off="dom.changeConfig('progressPages', false, '{{page.name}}')">
 						<div></div>
 						<svg viewBox="0 0 52 32"><path d="M 8,0 C 3.58,0 0,3.58 0,8 0,12.42 3.58,16 8,16 8,16 8,16 8,16 12.42,16 16,12.42 16,8 16,3.58 12.42,0 8,0 8,0 8,0 8,0 Z"></path></svg>
@@ -109,7 +109,7 @@
 				</div>
 
 				<div class="menu-simple-text gamepad-item">
-					{{language.global.view.progressPercent}}
+					<span>{{language.global.view.progressPercent}}</span>
 					<div class="switch{{#if page.progressPercent}} a{{/if}}" on="dom.changeConfig('progressPercent', true, '{{page.name}}')" off="dom.changeConfig('progressPercent', false, '{{page.name}}')">
 						<div></div>
 						<svg viewBox="0 0 52 32"><path d="M 8,0 C 3.58,0 0,3.58 0,8 0,12.42 3.58,16 8,16 8,16 8,16 8,16 12.42,16 16,12.42 16,8 16,3.58 12.42,0 8,0 8,0 8,0 8,0 Z"></path></svg>
@@ -127,14 +127,14 @@
 		<div class="menu-simple-content">
 			<div>
 				<div class="menu-simple-text gamepad-item">
-					{{language.comics.continueReading}}
+					<span>{{language.comics.continueReading}}</span>
 					<div class="switch{{#if page.opds.continueReading}} a{{/if}}" on="dom.changeBoxes('continueReading', true, 'opds')" off="dom.changeBoxes('continueReading', false, 'opds')">
 						<div></div>
 						<svg viewBox="0 0 52 32"><path d="M 8,0 C 3.58,0 0,3.58 0,8 0,12.42 3.58,16 8,16 8,16 8,16 8,16 12.42,16 16,12.42 16,8 16,3.58 12.42,0 8,0 8,0 8,0 8,0 Z"></path></svg>
 					</div>
 				</div>
 				<div class="menu-simple-text gamepad-item">
-					{{language.comics.recentlyAdded}}
+					<span>{{language.comics.recentlyAdded}}</span>
 					<div class="switch{{#if page.opds.recentlyAdded}} a{{/if}}" on="dom.changeBoxes('recentlyAdded', true, 'opds')" off="dom.changeBoxes('recentlyAdded', false, 'opds')">
 						<div></div>
 						<svg viewBox="0 0 52 32"><path d="M 8,0 C 3.58,0 0,3.58 0,8 0,12.42 3.58,16 8,16 8,16 8,16 8,16 12.42,16 16,12.42 16,8 16,3.58 12.42,0 8,0 8,0 8,0 8,0 Z"></path></svg>

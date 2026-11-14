@@ -3,7 +3,7 @@
 		<div class="menu-simple-content">
 			<div>
 				<div class="menu-simple-text gamepad-item">
-					{{language.reading.magnifyingGlass.activate}}
+					<span>{{language.reading.magnifyingGlass.activate}}</span>
 					<div class="switch{{#if config.readingMagnifyingGlass}} a{{/if}}" on="reading.activeMagnifyingGlass(true, false, true)" off="reading.activeMagnifyingGlass(false, false, true)">
 						<div></div>
 						<svg viewBox="0 0 52 32"><path d="M 8,0 C 3.58,0 0,3.58 0,8 0,12.42 3.58,16 8,16 8,16 8,16 8,16 12.42,16 16,12.42 16,8 16,3.58 12.42,0 8,0 8,0 8,0 8,0 Z"></path></svg>
@@ -309,21 +309,21 @@
 				<div class="menu-simple-element menu-simple-element-little sort-last-modified gamepad-item{{#compare page.sort '==' 'last-modified'}} s{{/compare}}" onclick="dom.changeSort(1, 'last-modified', 'reading')">{{language.global.sort.lastModified}}</div>
 				<div class="menu-simple-element menu-simple-element-little sort-shuffle gamepad-item{{#compare page.sort '==' 'shuffle'}} s{{/compare}}" onclick="dom.sort.generateShuffle(); dom.changeSort(1, 'shuffle', 'reading')">{{language.global.sort.shuffle}}</div>
 				<div class="menu-simple-text gamepad-item">
-					{{language.global.sort.foldersFirst}}
+					<span>{{language.global.sort.foldersFirst}}</span>
 					<div class="switch{{#if page.foldersFirst}} a{{/if}}" on="dom.changeSort(3, true, 'reading')" off="dom.changeSort(3, false, 'reading')">
 						<div></div>
 						<svg viewBox="0 0 52 32"><path d="M 8,0 C 3.58,0 0,3.58 0,8 0,12.42 3.58,16 8,16 8,16 8,16 8,16 12.42,16 16,12.42 16,8 16,3.58 12.42,0 8,0 8,0 8,0 8,0 Z"></path></svg>
 					</div>
 				</div>
 				<div class="menu-simple-text gamepad-item">
-					{{language.global.sort.compressedFirst}}
+					<span>{{language.global.sort.compressedFirst}}</span>
 					<div class="switch{{#if page.compressedFirst}} a{{/if}}" on="dom.changeSort(4, true, 'reading')" off="dom.changeSort(4, false, 'reading')">
 						<div></div>
 						<svg viewBox="0 0 52 32"><path d="M 8,0 C 3.58,0 0,3.58 0,8 0,12.42 3.58,16 8,16 8,16 8,16 8,16 12.42,16 16,12.42 16,8 16,3.58 12.42,0 8,0 8,0 8,0 8,0 Z"></path></svg>
 					</div>
 				</div>
 				<div class="menu-simple-text gamepad-item">
-					{{language.global.sort.invert}}
+					<span>{{language.global.sort.invert}}</span>
 					<div class="switch{{#if page.sortInvert}} a{{/if}}" on="dom.changeSort(2, true, 'reading')" off="dom.changeSort(2, false, 'reading')">
 						<div></div>
 						<svg viewBox="0 0 52 32"><path d="M 8,0 C 3.58,0 0,3.58 0,8 0,12.42 3.58,16 8,16 8,16 8,16 8,16 12.42,16 16,12.42 16,8 16,3.58 12.42,0 8,0 8,0 8,0 8,0 Z"></path></svg>
