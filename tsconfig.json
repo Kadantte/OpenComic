@@ -1,0 +1,27 @@
+{
+	"compilerOptions": {
+		"target": "ESNext",
+		"module": "Node16",
+		"declaration": false,
+		"declarationMap": false,
+		"strict": true,
+		"allowJs": true,
+		"checkJs": false,
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"allowSyntheticDefaultImports": true,
+		"moduleResolution": "node16",
+		"noImplicitAny": false, 
+		"resolveJsonModule": true,
+		"paths": {
+			"@types": ["./scripts/types.mts"],
+			"*": ["./scripts/*"],
+		},
+		"outDir": "./.dist",
+		"rootDir": "./scripts"
+	},
+	"include": [
+		"./scripts/**/*",
+	],
+	"exclude": ["node_modules"]
+}

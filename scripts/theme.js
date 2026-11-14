@@ -1,4 +1,5 @@
 const allColors = require(p.join(appDir, 'themes/material-design/colors/all-colors.js'));
+const communityThemes = require(p.join(appDir, '.dist/theme/community-themes.mjs')).default;
 
 function getColorTokens(color)
 {
@@ -17,6 +18,21 @@ function getTokensColor(tokens, theme, key)
 
 function setColor(color)
 {
+	applyColor(color);
+
+	storage.setKey('config', 'themeColor', color);
+
+	storage.setKey('config', 'communityTheme', {
+		id: '',
+		path: '',
+		baseColor: '',
+	});
+
+	loadCustomThemes();
+}
+
+function applyColor(color)
+{
 	let app = document.querySelector('.app');
 
 	for(let key in allColors.list)
@@ -25,54 +41,287 @@ function setColor(color)
 	}
 
 	app.classList.add(color);
-
-	storage.updateVar('config', 'themeColor', color);
+	titleBar.setColors();
 }
 
-function start()
+var nightMode;
+
+function _systemNightMode()
 {
-	events.events();
-
-	if(!handlebarsContext.themeColors)
+	if(config.systemNightMode)
 	{
-		let themeColors = [];
+		if(nightMode.matches)
+			dom.nightMode(true);
+		else
+			dom.nightMode(false);
+	}
+}
 
-		for(let key in allColors.list)
-		{
-			let color = allColors.list[key];
+function systemNightMode()
+{
+	nightMode = window.matchMedia('(prefers-color-scheme: dark)');
+	nightMode.addEventListener('change', _systemNightMode);
 
-			let tokens = getColorTokens(color);
+	_systemNightMode();
+}
 
-			themeColors.push({
-				key: color,
-				name: color.charAt(0).toUpperCase() + color.slice(1),
-				colors: [
-					getTokensColor(tokens, 'light', 'secondary-container'),
-					getTokensColor(tokens, 'light', 'surface-2'),
+function loadCustomThemes()
+{
+	const customThemes = [...storage.get('customThemes')];
 
-				],
-				/*light: {
-					primary: getTokensColor(tokens, 'light', 'primary'),
-					secondary: getTokensColor(tokens, 'light', 'secondary'),
-					tertiary: getTokensColor(tokens, 'light', 'tertiary'),
-				},
-				dark: {
-					primary: getTokensColor(tokens, 'dark', 'primary'),
-					secondary: getTokensColor(tokens, 'dark', 'secondary'),
-					tertiary: getTokensColor(tokens, 'dark', 'tertiary'),
-				},*/
-			});
-		}
+	if(config.communityTheme && config.communityTheme.path)
+	{
+		customThemes.push({
+			id: config.communityTheme.id,
+			path: config.communityTheme.path,
+			active: true,
+		});
 
-		handlebarsContext.themeColors = themeColors;
+		applyColor(config.communityTheme.baseColor);
 	}
 
-	template.loadContentRight('theme.content.right.html', true);
+	const currentCustomTheme = dom.queryAll('link.custom-theme');
+	currentCustomTheme.remove();
+
+	for(const theme of customThemes)
+	{
+		if(!theme.active)
+			continue;
+
+		const link = document.createElement('link');
+		link.rel = 'stylesheet';
+		link.href = theme.path;
+		link.classList.add('custom-theme');
+		document.head.appendChild(link);
+	}
+
+	themeVars.get();
+}
+
+function updateCustomThemes()
+{
+	let customThemes = storage.get('customThemes');
+	handlebarsContext.customThemes = customThemes;
+
+	let contentRight = template._contentRight();
+
+	let empty = contentRight.querySelector('.settings-custom-themes-empty');
+	let list = contentRight.querySelector('.settings-custom-themes-list');
+
+	if(!isEmpty(customThemes))
+	{
+		empty.style.display = 'none';
+		list.style.display = '';
+	}
+	else
+	{
+		empty.style.display = '';
+		list.style.display = 'none';
+	}
+
+	list.innerHTML = template.load('theme.content.right.custom.themes.list.html');
+	
+	events.eventSwitch();
+}
+
+let currentCustomThemePath = '';
+
+function setCustomThemePath()
+{
+	const dialog = electronRemote.dialog;
+
+	dialog.showOpenDialog({properties: ['openFile'], filters: [{extensions: ['css']}], securityScopedBookmarks: macosMAS, defaultPath: currentCustomThemePath}).then(async function (files) {
+
+		fileManager.macosSecurityScopedBookmarks(files);
+
+		if(files.filePaths && files.filePaths[0])
+		{
+			const folder = files.filePaths[0];
+			currentCustomThemePath = folder;
+			dom.queryAll('.input-path .path-selector span').html(folder);
+
+			const inputName = document.querySelector('.input-name');
+			const fileName = p.basename(folder);
+
+			if(!inputName.value)
+				inputName.value = p.parse(fileName).name;
+		}
+
+	});
+}
+
+function getCustomThemeInputValues()
+{
+	const name = document.querySelector('.input-name').value;
+	const path = currentCustomThemePath;
+	const active = +document.querySelector('.input-active').dataset.value;
+
+	return {
+		name: name,
+		path: path,
+		active: !!active,
+	};
+}
+
+function addCustomTheme(edit = false, save = false)
+{
+	if(save)
+	{
+		const customThemes = storage.get('customThemes');
+
+		if(edit !== false)
+			customThemes[edit] = getCustomThemeInputValues();
+		else
+			customThemes.push(getCustomThemeInputValues());
+
+		events.closeDialog();
+
+		storage.set('customThemes', customThemes);
+		updateCustomThemes();
+		loadCustomThemes();
+	}
+	else
+	{
+		const customThemes = storage.get('customThemes');
+		handlebarsContext.customTheme = edit !== false ? customThemes[edit] : false;
+		currentCustomThemePath = edit !== false ? customThemes[edit].path : '';
+
+		handlebarsContext.customThemeDescription = hb.compile(language.settings.theme.customThemes.description)({linkStart: '<a href="https://opencomic.app/docs/guides/settings/custom-themes/" target="_blank">', linkEnd: '</a>'});
+
+		events.dialog({
+			header: language.settings.theme.customThemes.main,
+			width: 600,
+			height: false,
+			content: template.load('dialog.custom.theme.add.html'),
+			buttons: [
+				{
+					text: language.buttons.cancel,
+					function: 'events.closeDialog();',
+				},
+				{
+					text: language.buttons.save,
+					function: `theme.addCustomTheme(${edit}, true);`,
+				}
+			],
+		});
+
+		events.eventSwitch();
+		events.eventInput();
+	}
+}
+
+function editCustomTheme(key)
+{
+	addCustomTheme(key, false);
+}
+
+function activeCustomTheme(key, active)
+{
+	const customThemes = storage.get('customThemes');
+
+	if(customThemes[key])
+	{
+		customThemes[key].active = active;
+		storage.set('customThemes', customThemes);
+		// updateCustomThemes();
+	}
+
+	loadCustomThemes();
+}
+
+function removeCustomTheme(key, confirm = false)
+{
+	if(confirm)
+	{
+		const customThemes = storage.get('customThemes');
+		customThemes.splice(key, 1);
+		storage.set('customThemes', customThemes);
+		updateCustomThemes();
+	}
+	else
+	{
+		events.dialog({
+			header: language.settings.theme.customThemes.delete,
+			width: 400,
+			height: false,
+			content: language.settings.theme.customThemes.confirmDelete,
+			buttons: [
+				{
+					text: language.buttons.cancel,
+					function: 'events.closeDialog();',
+				},
+				{
+					text: language.buttons.delete,
+					function: 'events.closeDialog(); theme.removeCustomTheme('+key+', true);',
+				}
+			],
+		});
+	}
+}
+
+function setCommunityTheme(communityTheme)
+{
+	storage.setKey('config', 'communityTheme', communityTheme);
+	loadCustomThemes();
+
+	if(!communityTheme.path)
+	{
+		applyColor(config.themeColor);
+	}
+}
+
+function start(animation = true)
+{
+	const themeColors = [];
+
+	for(let key in allColors.list)
+	{
+		const color = allColors.list[key];
+		const tokens = getColorTokens(color);
+
+		themeColors.push({
+			key: color,
+			name: language.settings.theme.colors[color] || (color.charAt(0).toUpperCase() + color.slice(1)),
+			colors: [
+				getTokensColor(tokens, 'light', 'secondary-container'),
+				getTokensColor(tokens, 'light', 'surface-2'),
+
+			],
+			/*light: {
+				primary: getTokensColor(tokens, 'light', 'primary'),
+				secondary: getTokensColor(tokens, 'light', 'secondary'),
+				tertiary: getTokensColor(tokens, 'light', 'tertiary'),
+			},
+			dark: {
+				primary: getTokensColor(tokens, 'dark', 'primary'),
+				secondary: getTokensColor(tokens, 'dark', 'secondary'),
+				tertiary: getTokensColor(tokens, 'dark', 'tertiary'),
+			},*/
+		});
+	}
+
+	handlebarsContext.themeColors = themeColors;
+
+	template.loadContentRight('theme.content.right.html', animation);
 
 	gamepad.updateBrowsableItems('theme');
+
+	events.events();
+	updateCustomThemes();
+
+	communityThemes.load();
 }
 
 module.exports = {
-	setColor: setColor,
-	start: start,
+	setColor,
+	systemNightMode,
+	loadCustomThemes,
+	addCustomTheme,
+	editCustomTheme,
+	activeCustomTheme,
+	removeCustomTheme,
+	setCustomThemePath,
+	setCommunityTheme,
+	communityThemes,
+	start,
 };

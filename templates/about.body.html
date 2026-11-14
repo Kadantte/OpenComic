@@ -16,6 +16,7 @@ body
 	box-sizing: border-box;
 	text-align: center;
 	overflow: auto;
+	user-select: none;
 }
 
 .about::before
@@ -35,19 +36,18 @@ body
 
 .about-header-logo
 {
-	height: 56px;
-	width: 56px;
+	height: 96px;
+	width: 96px;
 	margin-bottom: 16px;
 	display: inline-block;
-	background-size: 56px;
 	background-repeat: no-repeat;
 	background-position: 50%;
 }
 
 .about-header-logo img
 {
-	height: 56px;
-	width: 56px;
+	height: 96px;
+	width: 96px;
 }
 
 .about-header-text
@@ -74,13 +74,27 @@ body
 {
 	display: block;
 	font-size: 14px;
-	text-overflow: ellipsis;
-	overflow: hidden;
-	white-space: nowrap;
-	word-wrap: normal;
 	color: rgba(0, 0, 0, 0.6);
 	height: 20px;
 	line-height: 22px;
+	position: relative;
+}
+
+.about-header-text i
+{
+	font-size: 16px;
+	position: absolute;
+	right: -22px;
+	top: 0px;
+	cursor: pointer;
+	transition: 0.1s;
+	border-radius: 4px;
+	padding: 2px 1px 2px 2px;
+}
+
+.about-header-text i:hover
+{
+	background-color: rgba(0, 0, 0, 0.1);
 }
 
 .about-text
@@ -88,9 +102,31 @@ body
 	line-height: 20px;
 }
 
+.about-packages
+{
+	max-width: 800px;
+	line-height: 24px;
+}
+
+.about-packages > div
+{
+	height: 20px;
+}
+
+.about-packages > span
+{
+	margin: 0px 4px;
+	white-space: nowrap;
+}
+
+.about-packages > span span
+{
+	opacity: 0.6;
+}
+
 .night-mode
 {
-	background-color: #212121;
+	background-color: #242a30;
 }
 
 .night-mode .about-header-text > span
@@ -103,10 +139,54 @@ body
 	color: rgba(255, 255, 255, 1);
 }
 
+.night-mode .about-text
+{
+	color: rgba(255, 255, 255, 1);
+}
+
+.night-mode .about-packages
+{
+	color: rgba(255, 255, 255, 1);
+}
+
 a
 {
-	color: #1976D2 !important;
+	color: #00629f !important;
     text-decoration: none !important;
+}
+
+.night-mode a
+{
+	color: #9acbff !important;
+}
+
+code
+{
+	padding: 2px 6px;
+	margin: 0;
+	font-size: 85%;
+	white-space: break-spaces;
+	border-radius: 6px;
+	background-color: #e8f0f7;
+	/*color: var(--md-sys-color-on-surface);*/
+	transition: background-color 0.2s;
+	letter-spacing: 0.25px;
+}
+
+a > code
+{
+	text-decoration: underline !important;
+	color: #00629f;
+}
+
+.night-mode code
+{
+	background-color: #343a42;
+}
+
+.night-mode a > code
+{
+	color: #9acbff;
 }
 
 </style>
@@ -114,18 +194,18 @@ a
 <div class="about{{#if config.nightMode}} night-mode{{/if}}">
 	<div>
 		<div class="about-header-logo">
-			<img src="../images/logo.png">
+			<img src="../images/icon-border-transparent.png">
 		</div>
 		<br>
 		<div class="about-header-text">
-			<div>{{language.appName}}</div>
-			<span>{{language.about.version}} {{config.appVersion}}</span>
+			<div>{{language.appName}}{{#if nightly.build}} Nightly{{/if}}</div>
+			<span>{{language.about.version}} {{config.appVersion}}{{#if nightly.build}} <a href="javascript:void(0);" onclick="shell.openExternal('https://github.com/ollm/OpenComic/commit/{{nightly.commit}}');"><code>{{nightly.commit7}}</code></a>{{/if}}<i class="material-icon menu-simple-icon-first" onclick="clipboard.writeText('{{language.about.version}} {{config.appVersion}}{{#if nightly.build}} {{nightly.commit7}}{{/if}}')">content_copy</i></span>
 		</div>
 		<br>
 		<div class="about-text">
 			GNU General Public License v3 (<a href="javascript:void(0);" onclick="shell.openExternal('https://github.com/ollm/OpenComic/blob/master/LICENSE');">GPL-3</a>)
 			<br>
-			Copyright © 2017-2023 <a href="javascript:void(0);" onclick="shell.openExternal('{{#if packageJson.author.url}}{{packageJson.author.url}}{{else}}mailto:{{packageJson.author.email}}{{/if}}')">{{packageJson.author.name}}</a>
+			Copyright © 2017-2025 <a href="javascript:void(0);" onclick="shell.openExternal('{{#if packageJson.author.url}}{{packageJson.author.url}}{{else}}mailto:{{packageJson.author.email}}{{/if}}')">{{packageJson.author.name}}</a>
 			<br>
 			{{#if packageJson.contributors}}
 				{{language.about.contributedBy}}
@@ -138,6 +218,18 @@ a
 			{{#each language.about.translators}}{{#unless @first}}{{#if @last}} {{@root.language.global.and}} {{else}}, {{/if}}{{/unless}}
 			<a href="javascript:void(0);" onclick="shell.openExternal('{{#if url}}{{url}}{{else}}mailto:{{email}}{{/if}}')">{{name}}</a>
 			{{/each}}
+			<br>
+		</div>
+		<br><br>
+		<div class="about-packages">
+			{{#each highlightDependencies}}
+			<span><a href="javascript:void(0);" onclick="shell.openExternal('https://www.npmjs.com/package/{{package}}')">{{package}}</a> <span>{{version}}</span></span>
+			{{/each}}
+			<div></div>
+			{{#each dependencies}}
+			<span><a href="javascript:void(0);" onclick="shell.openExternal('https://www.npmjs.com/package/{{package}}')">{{package}}</a> <span>{{version}}</span></span>
+			{{/each}}
+			<br><br>
 		</div>
 	</div>
 </div>

@@ -1,16 +1,19 @@
 //Load template
 
-function loadTemplate(file)
+function loadTemplate(file, context = false)
 {
+	if(context === false)
+		context = handlebarsContext;
+
 	if(templates.templatesCacheTheme[config.theme] && templates.templatesCacheTheme[config.theme][file])
-		return templates.templatesCacheTheme[config.theme][file](handlebarsContext);
+		return templates.templatesCacheTheme[config.theme][file](context);
 	else if(templates.templatesCache[file])
-		return templates.templatesCache[file](handlebarsContext);
+		return templates.templatesCache[file](context);
 }
 
 function loadTemplateQuery(querySelector, file)
 {
-	var element = document.querySelector(querySelector);
+	let element = document.querySelector(querySelector);
 	if(element) element.innerHTML = loadTemplate(file);
 }
 
@@ -28,13 +31,20 @@ var contentLeftZindex = 1;
 
 function changeContentLeft(html, animation = true)
 {
-	$('.content-left > div.to-remove').remove();
-	$('.content-left > div').addClass('to-remove');
+	dom.query('.content-left > div.to-remove').remove();
+	dom.query('.content-left > div').addClass('to-remove');
+
 	document.querySelector('.content-left').insertAdjacentHTML('beforeend', '<div class="content-left-'+contentLeftZindex+(animation ? ' a' : '')+'" style="z-index: ' + contentLeftZindex + ';"><div>'+html+'</div></div>');
 
-	contentLeft = $('.content-left .content-left-'+contentLeftZindex);
 	_contentLeft = document.querySelector('.content-left .content-left-'+contentLeftZindex);
-	setTimeout('$(\'.content-left-'+(contentLeftZindex-1)+'\').remove(); $(\'.content-left-'+contentLeftZindex+'\').removeClass(\'a\')', 300);
+	contentLeft = $(_contentLeft);
+
+	setTimeout(function(zIndex){
+
+		dom.query('.content-left-'+(zIndex-1)).remove();
+		dom.query('.content-left-'+zIndex).removeClass('a')
+
+	}, 300, contentLeftZindex);
 
 	contentLeftZindex++;
 }
@@ -42,36 +52,45 @@ function changeContentLeft(html, animation = true)
 function loadContentLeft(template, animation)
 {
 	changeContentLeft(loadTemplate(template), animation);
+	return contentLeftZindex - 1;
 }
 
 var contentRightZindex = 1;
 
 function changeContentRight(html, animation = true, keepScroll = false)
 {
-	$('.content-right > div.to-remove').remove();
-	$('.content-right > div').addClass('to-remove');
+	dom.query('.content-right > div.to-remove').remove();
+	dom.query('.content-right > div').addClass('to-remove');
+
+	let scroll;
 
 	if(keepScroll && keepScroll < 2)
 	{
-		var previous = $('.content-right > div > div').last();
-		var scroll = (previous.scrollTop() / (previous.prop('scrollHeight') - previous.height()));
+		let previous = document.querySelector('.content-right > div:last-child > div');
+		scroll = (previous.scrollTop / (previous.scrollHeight - previous.getBoundingClientRect().height));
 	}
 
 	document.querySelector('.content-right').insertAdjacentHTML('beforeend', '<div class="content-right-'+contentRightZindex+(animation ? ' a' : '')+'" style="z-index: ' + contentRightZindex + ';"><div>'+html+'</div></div>');
 
 	if(keepScroll)
 	{
-		var current = $('.content-right > div > div').last();
+		let current = document.querySelector('.content-right > div:last-child > div');
 
 		if(keepScroll > 1)
-			current.scrollTop(keepScroll);
+			current.scrollTop = keepScroll;
 		else
-			current.scrollTop((current.prop('scrollHeight') - current.height()) * scroll);
+			current.scrollTop = (current.scrollHeight - current.getBoundingClientRect().height) * scroll;
 	}
 
-	contentRight = $('.content-right .content-right-'+contentRightZindex);
 	_contentRight = document.querySelector('.content-right .content-right-'+contentRightZindex);
-	setTimeout('$(\'.content-right-'+(contentRightZindex-1)+'\').remove(); $(\'.content-right-'+contentRightZindex+'\').removeClass(\'a\')', 300);
+	contentRight = $(_contentRight);
+
+	setTimeout(function(zIndex){
+
+		dom.query('.content-right-'+(zIndex-1)).remove();
+		dom.query('.content-right-'+zIndex).removeClass('a')
+
+	}, 300, contentRightZindex);
 
 	contentRightZindex++;
 }
@@ -79,37 +98,63 @@ function changeContentRight(html, animation = true, keepScroll = false)
 function loadContentRight(template, animation, keepScroll)
 {
 	changeContentRight(loadTemplate(template), animation, keepScroll);
+	return contentRightZindex - 1;
 }
 
 var headerZindex = 1;
 
 function changeHeader(html, animation = true)
 {
-	$('.bar-header > div.to-remove').remove();
-	$('.bar-header > div').addClass('to-remove');
+	dom.query('.bar-header > div.to-remove').remove();
+	dom.query('.bar-header > div').addClass('to-remove');
+
 	document.querySelector('.bar-header').insertAdjacentHTML('beforeend', '<div class="bar-header-'+headerZindex+(animation ? ' a' : '')+'" style="z-index: ' + headerZindex + ';"><div>'+html+'</div></div>');
 
-	barHeader = $('.bar-header .bar-header-'+headerZindex);
 	_barHeader = document.querySelector('.bar-header .bar-header-'+headerZindex);
-	setTimeout('$(\'.bar-header-'+(headerZindex-1)+'\').remove(); $(\'.bar-header-'+headerZindex+'\').removeClass(\'a\')', 300);
+	barHeader = $(_barHeader);
+
+	setTimeout(function(zIndex){
+
+		dom.query('.bar-header-'+(zIndex-1)).remove();
+		dom.query('.bar-header-'+zIndex).removeClass('a');
+
+	}, 300, headerZindex);
 
 	headerZindex++;
+
+	dom.header.event();
 }
 
 function loadHeader(template, animation)
 {
+	calculateHeaderDelay();
 	changeHeader(loadTemplate(template), animation);
+}
+
+var headerDelay = 0;
+
+function setHeaderDelay()
+{
+	headerDelay = performance.now();
+}
+
+function calculateHeaderDelay()
+{
+	const now = performance.now();
+
+	handlebarsContext.headerDelay = headerDelay ? now - headerDelay : 0;
+	handlebarsContext.headerAnimationDelay = 'animation-delay: -'+handlebarsContext.headerDelay+'ms;';
 }
 
 function changeGlobalElement(html, element)
 {
-	var element = document.querySelector('.global-elements .'+element);
+	element = document.querySelector('.global-elements .'+element);
 	if(element) element.innerHTML = html;
 
 	if(globalElement === false)
 	{
-		globalElement = $('.global-elements');
 		_globalElement = document.querySelector('.global-elements');
+		globalElement = $(_globalElement);
 	}
 }
 
@@ -160,13 +205,14 @@ module.exports = {
 	loadContentRight: loadContentRight,
 	changeHeader: changeHeader,
 	loadHeader: loadHeader,
+	setHeaderDelay: setHeaderDelay,
+	headerDelay: calculateHeaderDelay,
 	changeGlobalElement: changeGlobalElement,
 	contentLeft: selectContentLeft,
 	contentRight: selectContentRight,
 	barHeader: selectBarHeader,
 	globalElement: selectGlobalElement,
 	loadGlobalElement: loadGlobalElement,
-	contentRightZindex: function(){return contentRightZindex - 1},
 	contentRightIndex: function(){return contentRightZindex - 1},
 	contentLeftIndex: function(){return contentLeftZindex - 1},
 	_contentLeft: function(){return _contentLeft},

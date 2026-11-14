@@ -1,8 +1,15 @@
-var unzip = false, unrar = false, un7z = false, bin7z = false, untar = false, unpdf = false;
+const requestFileAccess = require(p.join(appDir, '.dist/file-manager/request-file-access.js')),
+	filePassword = require(p.join(appDir, '.dist/file-manager/file-password.js')),
+	diskType = require(p.join(appDir, '.dist/file-manager/disk-type.js')),
+	pdfImagesProvider = require(p.join(appDir, '.dist/file-manager/pdf-images-provider.mjs')).default,
+	compressedStreamReader = require(p.join(appDir, '.dist/file-manager/compressed-stream-reader.mjs')).default;
 
-var file = function(path) {
+var native7z = false, fastXmlParser = false, Minimatch = false;
+
+var file = function(path, _config = false) {
 
 	this.path = path;
+	this._sha = sha1(p.normalize(path || ''));
 
 	this.files = [];
 
@@ -15,7 +22,12 @@ var file = function(path) {
 		filtered: true,
 		sha: true,
 		only: false,
+		log: true,
+		progress: true,
+		extractDocumentImages: false,
 	};
+
+	if(_config) this.config = {...this.config, ..._config};
 
 	this.updateConfig = function(config) {
 
@@ -30,10 +42,10 @@ var file = function(path) {
 
 		if(fs.existsSync(path))
 		{
-			if(fs.statSync(path).isDirectory())
-				this.isFolder = true;
-			else if(inArray(fileExtension(path), compressedExtensions.all))
+			if(compatible.compressed(path))
 				this.isCompressed = true;
+			else if(fs.statSync(path).isDirectory())
+				this.isFolder = true;
 		}
 
 		return {folder: this.isFolder, compressed: this.isCompressed};
@@ -43,6 +55,74 @@ var file = function(path) {
 
 	this.read = async function(config = {}, path = false) {
 
+		const sha = path ? sha1(p.normalize(path)) : this._sha;
+		const key = 'read--'+sha+(config.forceType ? '--'+config.forceType : '')+(config.prefixes ? '--'+Object.values(config.prefixes).join('-') : '');
+
+		const release = await mutex.lock(key);
+
+		try
+		{
+			return await this._read(config, path);
+		}
+		catch(error)
+		{
+			throw error;
+		}
+		finally
+		{
+			release();
+		}
+
+	}
+
+	this.readRecursive = async function(config = {}, path = false) {
+
+		const rootPath = path || this.path;
+		const readConfig = {
+			...this.config,
+			only: false,
+			...config,
+		};
+
+		const visited = new Set();
+		const result = [];
+
+		async function walk(currentPath, isRoot = false) {
+
+			if(visited.has(currentPath))
+				return;
+
+			visited.add(currentPath);
+
+			const currentFile = isRoot ? this : fileManager.file(currentPath, readConfig);
+
+			try
+			{
+				const entries = await currentFile.read(readConfig, currentPath);
+
+				for(let i = 0, len = entries.length; i < len; i++)
+				{
+					const entry = entries[i];
+					result.push(entry);
+
+					if(entry.folder || entry.compressed)
+						await walk(entry.path);
+				}
+			}
+			finally
+			{
+				if(!isRoot)
+					currentFile.destroy();
+			}
+		}
+
+		await walk.call(this, rootPath, true);
+
+		return result;
+	}
+
+	this._read = async function(config = {}, path = false) {
+
 		path = path || this.path;
 		let _realPath = realPath(path, -1);
 
@@ -50,23 +130,30 @@ var file = function(path) {
 
 		let files = [];
 
-		if(containsCompressed(path))
+		if(isServer(path))
 		{
-			if(inArray(fileExtension(path), compressedExtensions.all))
+			if(!containsCompressed(path))
+				files = await this.readServer(path, _realPath);
+			else
+				files = await this.readServerCompressed(path, _realPath);
+		}
+		else if(containsCompressed(path))
+		{
+			if(compatible.compressed(path))
 				files = await this.readCompressed(path, _realPath);
 			else
 				files = await this.readInsideCompressed(path, _realPath);
 		}
 		else
 		{
-			if(fs.statSync(_realPath).isDirectory())
-				files = this.readDir(path, _realPath);
-			else if(inArray(fileExtension(path), compressedExtensions.all))
+			if(compatible.compressed(path))
 				files = await this.readCompressed(path, _realPath);
+			else if(fs.existsSync(_realPath) && fs.statSync(_realPath).isDirectory())
+				files = await this.readDir(path, _realPath);
 		}
 
 		if(this.config.sort)
-			files = sort(files);
+			files = await sort(files, this.config.sort);
 
 		if(this.config.only && typeof this.config.only === 'number')
 			files = this.only(files);
@@ -83,31 +170,58 @@ var file = function(path) {
 		return this.config.filtered ? filtered(files, this.config.specialFiles) : files;
 	}
 
-	this.readDir = function(path = false, _realPath = false) {
+	this.readDir = async function(path = false, _realPath = false) {
 
 		path = path || this.path;
 		_realPath = _realPath || realPath(path, -1);
 
+		this.macosStartAccessingSecurityScopedResource(_realPath);
+
+		const _files = await fsp.readdir(_realPath, {withFileTypes: !this.config.fastRead});
 		let files = [];
-		let _files = fs.readdirSync(_realPath);
 
 		if(_files)
 		{
-			for(let i = 0, len = _files.length; i < len; i++)
+			for(const file of _files)
 			{
-				let filePath = p.join(path, _files[i]);
-				let retrunPath = filePath;
+				const name = this.config.fastRead ? file : file.name;
 
-				if(!this.config.fastRead && fs.statSync(filePath).isDirectory())
-					files.push({name: _files[i], path: retrunPath, folder: true, compressed: false});
-				else if(inArray(fileExtension(filePath), compressedExtensions.all))
-					files.push({name: _files[i], path: retrunPath, folder: false, compressed: true});
+				const filePath = fastJoin(path, name);
+				const retrunPath = filePath;
+
+				let isDirectory = false;
+
+				if(!this.config.fastRead)
+				{
+					if(file.isDirectory())
+					{
+						isDirectory = true;
+					}
+					else if(file.isSymbolicLink())
+					{
+						try
+						{
+							isDirectory = (await fsp.stat(fastJoin(_realPath, name))).isDirectory();
+						}
+						catch(error)
+						{
+							console.error(error);
+						}
+					}
+
+				}
+
+				if(isDirectory)
+					files.push({name: name, path: retrunPath, folder: true, compressed: false});
+				else if(compatible.compressed(filePath))
+					files.push({name: name, path: retrunPath, folder: false, compressed: true});
 				else
-					files.push({name: _files[i], path: retrunPath, folder: false, compressed: false});
+					files.push({name: name, path: retrunPath, folder: false, compressed: false});
 			}
 		}
 
 		return files;
+
 	}
 
 	this.compressedOpened = {};
@@ -136,6 +250,7 @@ var file = function(path) {
 			for(let i = 10; i < len; i++)
 			{
 				let path = compressed[i].path;
+				this.compressedOpened[path].compressed.destroy();
 				delete this.compressedOpened[path];
 			}
 		}
@@ -143,27 +258,54 @@ var file = function(path) {
 
 	this.openCompressed = function(path, _realPath = false, mtime = false) {
 
-		_realPath = _realPath || realPath(path, -1);
-		mtime = mtime || Date.parse(fs.statSync(firstCompressedFile(path)).mtime);
+		if(this.config.prefixes)
+			_realPath = _realPath || realPath(path, -1, this.config.prefixes);
+		else
+			_realPath = _realPath || realPath(path, -1);
 
-		let now = Date.now();
+		mtime = mtime || fs.statSync(firstCompressedFileRealPath(path)).mtime.getTime();
 
-		if(!this.compressedOpened[path] || this.compressedOpened[path].mtimeMainCompressed != mtime) // Check if the Compressed file has been modified since the last time it was opened
+		const now = Date.now();
+		let opened = this.compressedOpened[path];
+
+		if(!opened || opened.mtimeMainCompressed != mtime) // Check if the Compressed file has been modified since the last time it was opened
 		{
-			this.compressedOpened[path] = {
+			opened = this.compressedOpened[path] = {
 				lastUsage: now,
 				mtimeMainCompressed: mtime,
-				compressed: fileManager.fileCompressed(path, _realPath),
+				compressed: fileManager.fileCompressed(path, _realPath, this.config.forceType, this.config.prefixes, {log: this.config.log, progress: this.config.progress}),
 			};
 		}
 		else
 		{
-			this.compressedOpened[path].lastUsage = now;
+			opened.lastUsage = now;
 		}
 
 		this.cleanCompressedOpened();
 
-		return this.compressedOpened[path].compressed;
+		const compressed = opened.compressed;
+
+		if(this.config.progress)
+			compressed.progress = this.config.progress;
+
+		if(this.config.fromThumbnailsGeneration)
+			compressed.config.fromThumbnailsGeneration = true;
+
+		if(compressed.extractDocumentImages)
+			this.config.extractDocumentImages = true;
+
+		return compressed;
+
+	}
+
+	this.updateContentRightIndex = function(index = false) {
+
+		index = index || template.contentRightIndex();
+
+		for(let path in this.compressedOpened)
+		{
+			this.compressedOpened[path].compressed.contentRightIndex = index;
+		}
 
 	}
 
@@ -172,20 +314,32 @@ var file = function(path) {
 		path = path || this.path;
 		_realPath = _realPath || realPath(path, -1);
 
-		let mtime = Date.parse(fs.statSync(firstCompressedFile(path)).mtime);
+		let _isServer = isServer(path);
+
+		let mtime = !_isServer ? fs.statSync(firstCompressedFile(path)).mtime.getTime() : 1;
 		let compressed = this.openCompressed(path, _realPath, mtime);
 
-		let json = cache.readFile(compressed.cacheFile);
-
-		if(json)
-			json = JSON.parse(json);
+		let json = cache.readJson(compressed.cacheFile);
 
 		if(this.config.cache)
 		{
-			if(json)
+			if(json && json.files)
 			{
-				if(json.mtime == mtime)
+				if(json.mtime == mtime || _isServer)
+				{
+					if(json.error && !this.config.fromThumbnailsGeneration && !this.config.subtask)
+						dom.compressedError({message: json.error}, false, sha1(this.path), this.path);
+
+					setFileData(path, json.files);
+
+					if(json.metadata)
+						this.saveCompressedMetadata(path, json.metadata, true);
+
 					return json.files;
+				}
+
+				if(fs.existsSync(compressed.tmp))
+					await fsp.rmdir(compressed.tmp, {recursive: true});
 			}
 		}
 
@@ -195,9 +349,16 @@ var file = function(path) {
 		await this.extractIfInsideAnotherCompressed(path, _realPath);
 
 		let files = await compressed.read(this.config);
+		let metadata = await compressed.readMetadata(this.config);
+		this.saveCompressedMetadata(path, metadata);
 
-		if(!json || json.mtime != mtime)
-			cache.writeFile(compressed.cacheFile, JSON.stringify({mtime: mtime, files: files}), {}, function(){});
+		if(metadata.poster)
+			files = this.setPosterFromMetadata(files, metadata.poster);
+
+		if(!json || json.mtime != mtime || json.files.length !== files.length)
+			cache.writeJson(compressed.cacheFile, {mtime: mtime, files: files, metadata: metadata});
+
+		setFileData(path, files);
 
 		return files;
 
@@ -219,6 +380,153 @@ var file = function(path) {
 		}
 
 		return files;
+
+	}
+
+	this.serverHasCache = function(path) {
+
+		path = serverClient.fixPath(path || this.path);
+		let sha = sha1(path);
+		let cacheFile = (cache.zstd !== false) ? 'server-files-'+sha+'.json.zstd' : 'server-files-'+sha+'.json';
+
+		return cache.existsFile(cacheFile);
+
+	}
+
+	this.readServer = async function(path = false, _realPath = false) {
+
+		path = serverClient.fixPath(path || this.path);
+		_realPath = _realPath || realPath(path, -1);
+
+		let sha = sha1(path);
+		let cacheFile = 'server-files-'+sha+'.json';
+
+		if(this.config.cache && (this.config.cacheOnly || this.config.cacheServer || serverInOfflineMode))
+		{
+			let json = cache.readJson(cacheFile);
+
+			if(json && json.files)
+				return json.files;
+		}
+
+		if(serverInOfflineMode)
+			return [];
+
+		if(this.config.cacheOnly)
+			throw new Error('notCacheOnly');
+
+		let files = await serverClient.read(path);
+
+		return files;
+
+	}
+
+	this.readServerCompressed = async function(path = false, _realPath = false) {
+
+		path = serverClient.fixPath(path || this.path);
+		_realPath = _realPath || realPath(path, -1);
+
+		if(compatible.compressed(path))
+			return this._readServerCompressed(path, _realPath);
+		else
+			return this.readServerInsideCompressed(path, _realPath);
+	}
+
+	this._readServerCompressed = async function(path = false, _realPath = false) {
+
+		path = serverClient.fixPath(path || this.path);
+		_realPath = _realPath || realPath(path, -1);
+
+		if(this.config.cache && (this.config.cacheOnly || this.config.cacheServer || serverInOfflineMode))
+		{
+			let files = false;
+
+			const cacheOnly = this.config.cacheOnly;
+			this.updateConfig({cacheOnly: true});
+
+			try
+			{
+				files = await this.readCompressed(path, _realPath);
+			}
+			catch(error)
+			{
+				if(!error.message || !/notCacheOnly/.test(error.message))
+					throw new Error(error);
+			}
+
+			this.updateConfig({cacheOnly: cacheOnly});
+
+			if(files !== false && files?.length)
+				return files; 
+
+			if(this.config.cacheOnly)
+				throw new Error('notCacheOnly');
+		}
+
+		let firstCompressed = firstCompressedFile(path, 0);
+
+		if(firstCompressed)
+		{
+			if(!serverClient.existsSync(realPath(firstCompressed, -1)))
+			{
+				// Download file to tmp
+				let file = await serverClient.download(path, {only: [firstCompressed]});
+
+				if(this.config.fromThumbnailsGeneration)
+					downloadedCompressedFile(firstCompressed);
+			}
+		}
+
+		return this.readCompressed(path, _realPath);
+
+	}
+
+	this.readServerInsideCompressed = async function(path = false, _realPath = false) {
+
+		path = path || this.path;
+		_realPath = _realPath || realPath(path, -1);
+
+		if(this.config.cache && (this.config.cacheOnly || this.config.cacheServer || serverInOfflineMode))
+		{
+			let files = false;
+
+			const cacheOnly = this.config.cacheOnly;
+			this.updateConfig({cacheOnly: true});
+
+			try
+			{
+				files = await this.readInsideCompressed(path, _realPath);
+			}
+			catch(error)
+			{
+				if(!error.message || !/notCacheOnly/.test(error.message))
+					throw new Error(error);
+			}
+
+			this.updateConfig({cacheOnly: cacheOnly});
+
+			if(this.config.cacheOnly)
+				throw new Error('notCacheOnly');
+
+			if(files !== false && files?.length)
+				return files; 
+		}
+
+		let firstCompressed = firstCompressedFile(path, 0);
+
+		if(firstCompressed)
+		{
+			if(!serverClient.existsSync(realPath(firstCompressed, -1)))
+			{
+				// Download file to tmp
+				let file = await serverClient.download(path, {only: [firstCompressed]});
+
+				if(this.config.fromThumbnailsGeneration)
+					downloadedCompressedFile(firstCompressed);
+			}
+		}
+
+		return this.readInsideCompressed(path, _realPath);
 
 	}
 
@@ -250,49 +558,51 @@ var file = function(path) {
 		return;
 	}
 
-	this._images = async function(num, files, from = false, fromReached = false, poster = false, deep = 0) {
+	this._images = async function(num, files, fullFiltered, from = false, fromReached = false, findPoster = false, deep = 0) {
 
-		let images = [];
+		const images = [];
 		let imagesNum = 0;
 
-		let reverse = num < 0 ? true : false;
-		let len = files.length;
-
-		let stop = len == 0 ? true : false;
-		let i = reverse ? len - 1 : 0;
+		const reverse = num < 0 ? true : false;
+		const len = fullFiltered.length;
+		const start = reverse ? len - 1 : 0;
+		const end = reverse ? -1 : len;
+		const step = reverse ? -1 : 1;
 
 		let index = 0;
 
-		while(!stop)
+		for(let i = start; i !== end; i += step)
 		{
-			let file = files[i];
+			let file = fullFiltered[i];
 			let image = false;
 
 			if(!from || fromReached || new RegExp('^\s*'+pregQuote(file.path)).test(from))
 			{
 				if(file.folder || file.compressed)
 				{
-					let _poster = false;
-					let _files = file.files || await this.read({}, file.path);
+					const _files = file.files || await this.read({cacheServer: true, filtered: false}, file.path);
+					const _fullFiltered = fileManager.filtered(_files);
+
+					let poster = false;
+
+					if(findPoster)
+					{
+						poster = this._poster(files, file.path); // Find poster in the same folder where the folder/file is located
+						if(!poster) poster = this._poster(_files, file.path, true); // Find poster inside folder/file
+					}
 
 					if(poster)
 					{
-						_poster = this._poster(files, file.path);
-						if(!_poster) _poster = this._poster(_files, file.path);
-					}
-
-					if(_poster)
-					{
-						image = _poster.path;
+						image = poster.path;
 					}
 					else
 					{
-						image = await this._images(reverse ? -1 : 1, _files, from, fromReached, poster, deep + 1);
+						image = await this._images((reverse ? -1 : 1), _files, _fullFiltered, from, fromReached, findPoster, deep + 1);
 						fromReached = image.fromReached;
 						image = image.images[0] || false;
 					}
 				}
-				else if(inArray(mime.getType(file.name), compatibleMime))
+				else if(compatible.image(file.name))
 				{
 					image = file.path;
 				}
@@ -310,17 +620,6 @@ var file = function(path) {
 			if(file.path === from)
 				fromReached = true;
 
-			if(reverse)
-			{
-				i--;
-				stop = i < 0 ? true : false;
-			}
-			else
-			{
-				i++;
-				stop = i >= len ? true : false;
-			}
-
 			if(this.config.cacheOnly && index > 16 && deep > 0)
 				throw new Error('notCacheOnly');
 
@@ -331,20 +630,45 @@ var file = function(path) {
 	}
 
 	// Get the first images of a folder/compressed
-	this.images = async function(only = 1, from = false, poster = false) {
+	this.images = async function(only = 1, from = false, findPoster = false, _files = false, _path = false, _isCompressed = false) {
 
-		if(poster) this.updateConfig({specialFiles: true});
-		if(!this.alreadyRead) await this.read();
+		this.updateConfig({filtered: false, sort: {extraKey: 'Reading'}});
 
-		if(poster)
+		// Find poster in the same folder where the folder/file is located
+		if(findPoster)
 		{
-			let _poster = await this.poster();
-			if(!_poster) _poster = this._poster(this.files);
-
-			if(_poster) return _poster;
+			const poster = await this.poster();
+			if(poster) return poster;
 		}
 
-		let images = (await this._images(only, this.files, from, false, poster)).images;
+		if(!this.alreadyRead)
+			await this.read({cacheServer: true, filtered: false});
+
+		const files = _files || this.files;
+		const path = _path || this.path;
+
+		const fullFiltered = fileManager.filtered(files);
+
+		_isCompressed = _isCompressed || isCompressed(path);
+
+		// Find poster inside folder/file
+		if(findPoster)
+		{
+			const poster = this._poster(files, path, true, _isCompressed);
+			if(poster) return poster;
+		}
+
+		// Inore single folders
+		if(config.ignoreSingleFoldersLibrary && fullFiltered.length == 1 && (fullFiltered[0].folder || fullFiltered[0].compressed))
+		{
+			const file = fullFiltered[0];
+			const files = file.files ? file.files : await this.read({cacheServer: true, filtered: false}, file.path);
+
+			return this.images(only, from, findPoster, files, file.path, _isCompressed);
+		}
+
+		// If no poster is found, find as a list of images
+		let images = (await this._images(only, files, fullFiltered, from, false, findPoster)).images;
 
 		for(let i = 0, len = images.length; i < len; i++)
 		{
@@ -357,25 +681,63 @@ var file = function(path) {
 		return (Math.abs(only) == 1) ? (images[0] || false) : images;
 	}
 
-	this._poster = function(files, path = false) {
+	this._poster = function(files, path = false, inside = false, _isCompressed = false) {
 
 		path = path || this.path;
 
-		let name = p.parse(path).name;
+		const name = p.parse(path).name;
+		const regex = new RegExp('^(?:[\-\s0-9+])?(?:'+pregQuote(name)+'(?:[_-]?(?:cover|default|folder|series|poster|thumbnail))?'+(inside ? '|cover|default|folder|series|poster|thumbnail' : '')+')(?:[\-\s0-9+])?\.[a-z0-9]+$');
 
-		let regex = new RegExp('^'+pregQuote(name)+'(?:\-[0-9+])?\.[a-z0-9]+');
+		const len = files.length;
 		let poster = false;
 
-		for(let i = 0, len = files.length; i < len; i++)
+		for(let i = 0; i < len; i++)
 		{
-			let file = files[i];
+			const file = files[i];
 
-			if(!file.folder && !file.compressed && regex.test(file.name) && (inArray(mime.getType(file.path), compatibleMime) || inArray(app.extname(file.path), compatibleSpecialExtensions)))
+			if(!file.folder && !file.compressed && (regex.test(file.name) || file.poster))
 			{
-				file.sha = sha1(file.path);
-				poster = file;
+				if(!poster && compatible.image(file.path))
+				{
+					file.sha = sha1(file.path);
+					poster = file;
+				}
+				else if(compatible.image.special(file.path)) // prioritize tbn poster
+				{
+					file.sha = sha1(file.path);
+					poster = file;
 
-				break;
+					break;
+				}
+			}
+		}
+
+		if(!poster && inside && len && (config.useTheFirstImageAsPosterInFolders || config.useTheFirstImageAsPosterInFiles))
+		{
+			_isCompressed = _isCompressed || isCompressed(path);
+
+			if((!_isCompressed && config.useTheFirstImageAsPosterInFolders) || (_isCompressed && config.useTheFirstImageAsPosterInFiles))
+			{
+				for(let i = 0; i < len; i++)
+				{
+					const file = files[i];
+
+					if(!file.folder && !file.compressed)
+					{
+						if(compatible.image(file.path))
+						{
+							file.sha = sha1(file.path);
+							file.fromFirstImageAsPoster = true;
+							poster = file;
+
+							break;
+						}
+					}
+					else
+					{
+						break;
+					}
+				}
 			}
 		}
 
@@ -384,15 +746,63 @@ var file = function(path) {
 
 	this.poster = async function() {
 
-		let dirname = p.dirname(this.path);
+		const dirname = p.dirname(this.path);
 
-		let file = fileManager.file(dirname);
-		file.updateConfig({...this.config, ...{fastRead: true, specialFiles: true, sha: false}});
-		let files = await file.read();
+		try
+		{
+			const file = fileManager.file(dirname);
+			file.updateConfig({fastRead: true, filtered: false, sha: false, cacheServer: true, sort: {extraKey: 'Reading'}});
+			const files = await file.read();
+			file.destroy();
 
-		let poster = this._poster(files);
+			return this._poster(files);
+		}
+		catch(error)
+		{
+			console.error(error);
 
-		return poster;
+			if(!macosMAS)
+				throw new Error(error);
+			//else
+			//	fileManager.requestFileAccess.check(this.path, error);
+		}
+
+		return false;
+	}
+
+	this.setPosterFromMetadata = function(files, poster) {
+
+		for(let i = 0, len = files.length; i < len; i++)
+		{
+			if(files[i].name == poster)
+			{
+				files[i].poster = true;
+
+				break;
+			}
+		}
+
+		return files;
+
+	}
+
+	this.saveCompressedMetadata = function(path, metadata, onlyIfChanged = false) {
+
+		if(metadata.title || metadata.author)
+		{
+			if(onlyIfChanged)
+			{
+				const currentMetadata = storage.getKey('compressedMetadata', path);
+
+				if(currentMetadata && currentMetadata.title === metadata.title && currentMetadata.author === metadata.author)
+					return;
+			}
+
+			storage.setKey('compressedMetadata', path, {
+				title: metadata.title,
+				author: metadata.author,
+			});
+		}
 
 	}
 
@@ -459,34 +869,51 @@ var file = function(path) {
 
 	this.readFromFilesList = function(files, path, lastCompressed) {
 
-		let segments = removePathPart(path, lastCompressed).split(p.sep);
+		let segments = splitPath(removePathPart(path, lastCompressed));
 
 		return this._readFromFilesList(segments, files);
 
 	}
 
 	// Makes the files available, extracting them from the respective compressed files if necessary
-	this.makeAvailable = async function(files, callbackWhenFileAvailable = false) {
+	this.makeAvailable = async function(files, callbackWhenFileAvailable = false, forceCheck = false, fromThumbnailsGeneration = false) {
 
-		let filesToDecompress = false;
+		let filesToDecompress = false, filesToDecompressNum = 0;
 
 		for(let i = 0, len = files.length; i < len; i++)
 		{
 			let file = files[i];
 
-			if(fs.existsSync(realPath(file.path, -1)))
+			let _path = realPath(file.path, -1, this.config.prefixes);
+
+			if((!forceCheck || _path === file.path) && fs.existsSync(_path))
 			{
 				if(callbackWhenFileAvailable) callbackWhenFileAvailable(file);
 			}
 			else
 			{
+				if(!filesToDecompress) filesToDecompress = {};
+			
 				let compressedFile = lastCompressedFile(file.path);
 
-				if(!filesToDecompress) filesToDecompress = {};
-				if(!filesToDecompress[compressedFile]) filesToDecompress[compressedFile] = [];
+				if(!compressedFile && isServer(file.path))
+				{
+					compressedFile = serverClient.getTypeAdress(file.path);
 
-				filesToDecompress[compressedFile].push(removePathPart(file.path, compressedFile));
+					if(!filesToDecompress[compressedFile]) filesToDecompress[compressedFile] = [];
+					filesToDecompress[compressedFile].push(file.path);
+				}
+				else if(compressedFile)
+				{
+					if(!filesToDecompress[compressedFile]) filesToDecompress[compressedFile] = [];
+					filesToDecompress[compressedFile].push(removePathPart(file.path, compressedFile));
+				}
+
+				filesToDecompressNum++;
 			}
+
+			if(_path !== file.path) // If it's not different, it's because it's not a compressed file.
+				fileManager.setTmpUsage(_path);
 		}
 
 		if(filesToDecompress)
@@ -495,94 +922,253 @@ var file = function(path) {
 
 			for(let compressedFile in filesToDecompress)
 			{
-				let compressed = this.openCompressed(compressedFile);
+				if(isServer(compressedFile))
+				{
+					if(containsCompressed(compressedFile, 0, false))
+					{
+						let firstCompressed = firstCompressedFile(compressedFile, 0, false);
 
-				await this.extractIfInsideAnotherCompressed(compressedFile);
+						// Download file to tmp
+						let file = await serverClient.download(compressedFile, {only: [firstCompressed]});
 
-				await compressed.extract({only: filesToDecompress[compressedFile]}, function(file) {
+						let compressed = this.openCompressed(compressedFile);
 
-					if(_this.config.sha) file.sha = sha1(file.path);
-					if(callbackWhenFileAvailable) callbackWhenFileAvailable(file);
+						await this.extractIfInsideAnotherCompressed(compressedFile);
 
-				});
+						await compressed.extract({only: filesToDecompress[compressedFile]}, function(file) {
+
+							if(_this.config.sha) file.sha = sha1(file.path);
+							if(callbackWhenFileAvailable) callbackWhenFileAvailable(file);
+
+						});
+
+						if(fromThumbnailsGeneration || _this.config.fromThumbnailsGeneration)
+							downloadedCompressedFile(firstCompressed);
+					}
+					else
+					{
+						await serverClient.download(compressedFile, {only: filesToDecompress[compressedFile]}, function(file) {
+
+							if(_this.config.sha) file.sha = sha1(file.path);
+							if(callbackWhenFileAvailable) callbackWhenFileAvailable(file);
+
+						});
+					}
+				}
+				else
+				{
+					let compressed = this.openCompressed(compressedFile);
+
+					await this.extractIfInsideAnotherCompressed(compressedFile);
+
+					await compressed.extract({only: filesToDecompress[compressedFile]}, function(file) {
+
+						if(_this.config.sha) file.sha = sha1(file.path);
+						if(callbackWhenFileAvailable) callbackWhenFileAvailable(file);
+
+					});
+				}
 			}
 		}
 
-		return;
+		return filesToDecompressNum;
+	}
+
+	this.macosScopedResources = [];
+
+	this.macosStartAccessingSecurityScopedResource = function(path) {
+
+		if(macosMAS)
+		{
+			let securityScopedBookmarks = storage.get('securityScopedBookmarks') || {};
+			let segments = splitPath(path);
+
+			if(!segments[0])
+				segments[0] = p.sep;
+
+			for(let i = 1, len = segments.length; i < len; i++)
+			{
+				let _path = p.join(...segments);
+				let bookmark = securityScopedBookmarks[_path] || false;
+
+				if(bookmark)
+				{
+					try
+					{
+						this.macosScopedResources.push(electronRemote.app.startAccessingSecurityScopedResource(bookmark));
+						break;
+					}
+					catch {}
+				}
+
+				segments.pop();
+			}
+		}
+	}
+
+	this.destroyed = false;
+
+	this.destroy = function() {
+
+		this.destroyed = true;
+
+		for(let path in this.compressedOpened)
+		{
+			this.compressedOpened[path].compressed.destroy();
+			delete this.compressedOpened[path];
+		}
+
+		// Stop accessing security scoped resources
+		for(let i = 0, len = this.macosScopedResources.length; i < len; i++)
+		{
+			this.macosScopedResources[i]();
+		}
+
+		this.macosScopedResources = [];
+
+	};
+
+	this.afterDestroy = function() {
+
+		if(this.destroyed)
+			this.destroy();
+
 	}
 }
 
-
 // Compressed files
-var fileCompressed = function(path, _realPath = false) {
+var fileCompressed = function(path, _realPath = false, forceType = false, prefixes = false, _config = false) {
+
+	let extractDocumentImages = false;
+
+	if(compatible.compressed.pdf(path) || compatible.compressed.epub(path))
+	{
+		const fileConfig = reading.getConfig(path, path, false, false, true);
+
+		if(fileConfig.readingExtractDocumentImages && prefixes?.epub !== 'epub-zip')
+		{
+			prefixes = {pdf: 'pdf-images', epub: 'epub-images'};
+			extractDocumentImages = true;
+		}
+	}
 
 	this.path = path;
 	this.realPath = _realPath || realPath(path, -1);
+	this.forceType = forceType;
+	this.prefixes = prefixes;
+	this.extractDocumentImages = extractDocumentImages;
 	this.virtualPath = this.path;
 	this.sha = sha1(p.normalize(path));
+
+	if(prefixes)
+	{
+		const extension = app.extname(path);
+
+		if(extension)
+		{
+			for(let ext in prefixes)
+			{
+				if(compatible.compressed[ext].has(extension))
+				{
+					this.sha = prefixes[ext]+'-'+this.sha;
+
+					break;
+				}
+			}
+		}
+	}
+
 	this.cacheFile = 'compressed-files-'+this.sha+'.json';
 	this.tmp = p.join(tempFolder, this.sha);
 	this.tmpPartialExtraction = p.join(this.tmp, this.sha+'-opencomic-partial-extraction.txt');
 	this.tmpIsVector = p.join(this.tmp, this.sha+'-opencomic-is-vector.txt');
 
-	this.contentRightZindex = template.contentRightZindex();
+	this.contentRightIndex = template.contentRightIndex();
 
 	this.fullExtracted = false;
 
 	this.files = false;
 	this.filesStatus = {};
+	this.metadata = false;
 
 	this.config = this._config = {
 		// only: false,
-		width: window.devicePixelRatio * 150, // Vector width
+		cache: true,
+		//width: window.devicePixelRatio * (handlebarsContext.page.viewModuleSize || 150), // Vector width
+		width: window.devicePixelRatio * 300, // Vector width
 		height: false, // Vector height
 		force: false, // Forces the extraction even if the file exists
+		log: true,
+		progress: true,
 	};
 
+	if(_config) this.config = this._config = {...this.config, ..._config};
+
 	this._features = {
-		zip: {
+		'7z': { // 7z incldues multiple formats, like zip, rar, tar, etc.
 			read: true,
 			single: true,
 			vector: false,
-			canvas: false,
+			// canvas: false,
+			pdf: false,
 			html: false,
+			ebook: false,
 			progress: true,
-		},
-		'7z': {
-			read: true,
-			single: true,
-			vector: false,
-			canvas: false,
-			html: false,
-			progress: true,
-		},
-		rar: {
-			read: true,
-			single: true,
-			vector: false,
-			canvas: false,
-			html: false,
-			progress: true,
-		},
-		tar: {
-			read: true,
-			single: true,
-			vector: false,
-			canvas: false,
-			html: false,
-			progress: false,
 		},
 		pdf: {
 			read: true,
 			single: true,
 			vector: true,
-			canvas: true,
+			// canvas: true,
+			pdf: true,
 			html: true,
+			ebook: false,
+			progress: true,
+		},
+		epub: {
+			read: true,
+			single: true,
+			vector: true,
+			// canvas: false,
+			pdf: false,
+			html: true,
+			ebook: true,
+			progress: true,
+		},
+		foliate: {
+			read: true,
+			single: true,
+			vector: true,
+			// canvas: false,
+			pdf: false,
+			html: true,
+			ebook: true,
 			progress: true,
 		},
 	};
 
 	this.features = false;
+
+	this.log = function(message) {
+
+		if(this.config.log)
+			console.log(message);
+
+	}
+
+	this.time = function(key, message) {
+
+		if(this.config.log)
+			console.time(key, message);
+
+	}
+
+	this.timeEnd = function(key, message) {
+
+		if(this.config.log)
+			console.timeEnd(key, message);
+
+	}
 
 	this.updateConfigOnly = function(_only) {
 
@@ -609,10 +1195,11 @@ var fileCompressed = function(path, _realPath = false) {
 				config[key] = this._config[key];
 		}
 
+		const only = config.only || this.config._only;
 		this.config = config;
 
-		if(config.only)
-			this.updateConfigOnly(config.only);
+		if(only)
+			this.updateConfigOnly(only);
 
 	}
 
@@ -620,30 +1207,50 @@ var fileCompressed = function(path, _realPath = false) {
 
 		if(this.features && !force) return this.features;
 
+		force = force || this.forceType;
+		let ext = false;
+
 		if(!force)
 		{
-			let ext = fileExtension(this.path);
+			ext = app.extname(this.path);
 
-			if(inArray(ext, compressedExtensions.zip))
-				force = 'zip';
-			else if(inArray(ext, compressedExtensions['7z']))
+			if(compatible.compressed._7z(this.path))
 				force = '7z';
-			else if(inArray(ext, compressedExtensions.rar))
-				force = 'rar';
-			else if(inArray(ext, compressedExtensions.tar))
-				force = 'tar';
-			else if(inArray(ext, compressedExtensions.pdf))
+			else if(compatible.compressed.pdf.has(ext))
 				force = 'pdf';
+			else if(compatible.compressed.epub.has(ext))
+				force = 'epub';
+			else if(compatible.compressed.foliate.has(ext))
+				force = 'foliate';
 		}
 
 		this.features = this._features[force];
+		this.features.ext = force;
+		this.features.fileExt = ext;
 		this.features[force] = true;
 
 		return this.features;
 
 	}
 
-	this.readWithoutCache = false;
+	this.setTmpUsage = function() {
+
+		if(this.path !== this.realPath)
+			fileManager.setTmpUsage(this.realPath);
+
+	}
+
+	this.saveErrorToCache = function(error) {
+
+		let json = cache.readJson(this.cacheFile);
+
+		if(json)
+		{
+			json.error = (error.detail || error.message);
+			cache.writeJson(this.cacheFile, json);
+		}
+
+	}
 
 	this.read = async function(config = {}) {
 
@@ -653,20 +1260,386 @@ var fileCompressed = function(path, _realPath = false) {
 		if(this.config.cache && this.files)
 			return this.files;
 
-		this.readWithoutCache = true;
+		return this.readCurrent();
+	}
 
-		if(this.features.zip)
-			return this.readZip();
-		else if(this.features['7z'])
-			return this.read7z();
-		else if(this.features.rar)
-			return this.readRar();
-		else if(this.features.tar)
-			return this.readTar();
+	this.readCurrent = async function() {
+
+		this.setTmpUsage();
+
+		const release = await mutex.lock('readCompressed--'+this.sha+'--'+this.features.ext+'--'+this.features.fileExt);
+		const message = 'readCompressed | '+this.features.ext+(this.features.fileExt && this.features.ext !== this.features.fileExt ? ' ('+this.features.fileExt+')' : '')+' | '+this.path;
+
+		this.time(message);
+		let files = false;
+
+		try
+		{
+			if(this.features['7z'])
+				files = await this.read7z();
+			else if(this.features.pdf)
+				files = await this.readPdf();
+			else if(this.features.epub || this.features.foliate)
+				files = await this.readEpub();
+		}
+		catch(error)
+		{
+			throw error;
+		}
+		finally
+		{
+			this.timeEnd(message);
+			release();
+		}
+
+		return files;
+	}
+
+	this.readMetadata = async function(config = {}) {
+
+		this.updateConfig(config);
+		this.getFeatures();
+
+		if(this.config.cache && this.metadata)
+			return this.metadata;
+
+		return this.readCurrentMetadata();
+	}
+
+	this.readCurrentMetadata = function() {
+
+		if(this.features['7z'])
+			return this.readCompressedMetadata();
 		else if(this.features.pdf)
-			return this.readPdf();
+			return this.readPdfMetadata();
+		else if(this.features.epub || this.features.foliate)
+			return this.readEpubMetadata();
 
-		return false;
+		return {};
+	}
+
+	this.readCompressedMetadata = async function(files = false, compressedPath = '') {
+
+		files = files || await this.read();
+		let len = files.length;
+
+		if(/*config.ignoreSingleFoldersLibrary && */len === 1 && files[0].folder && files[0].files && files[0].files.length)
+			return this.readCompressedMetadata(files[0].files, p.join(compressedPath, files[0].name));
+
+		let comicInfoFile = false;
+
+		for(let i = 0; i < len; i++)
+		{
+			// Prioritize MetronInfo.xml if exists, otherwise ComicInfo.xml
+			if((comicInfoFile === false || files[i].name == 'MetronInfo.xml') && (files[i].name == 'ComicInfo.xml' || files[i].name == 'MetronInfo.xml'))
+				comicInfoFile = files[i];
+		}
+
+		if(comicInfoFile)
+		{
+			if(fastXmlParser === false)
+			{
+				fastXmlParser = require('fast-xml-parser').XMLParser;
+				fastXmlParser = new fastXmlParser({ignoreAttributes: false});
+			}
+
+			if(compressedPath !== false && lastCompressedFile(this.path) === lastCompressedFile(comicInfoFile.path))
+			{
+				const only = this.config.only;
+				await this.extract({only: [p.join(compressedPath, comicInfoFile.name)]});
+				this.updateConfig({only: only});
+			}
+			else
+			{
+				const file = fileManager.file(this.path);
+				await file.makeAvailable([{path: comicInfoFile.path}]);
+				file.destroy();
+			}
+
+			let xml = await fsp.readFile(realPath(comicInfoFile.path, -1));
+			let metadata = fastXmlParser.parse(xml);
+
+			if(comicInfoFile.name === 'MetronInfo.xml')
+				return this.readMetronInfo(metadata);
+
+			let comicInfo = metadata.ComicInfo || {};
+			let poster = false;
+
+			if(comicInfo.Pages && comicInfo.Pages.Page)
+			{
+				let _poster = false;
+
+				for(let i = 0, len = comicInfo.Pages.Page.length; i < len; i++)
+				{
+					let page = comicInfo.Pages.Page[i];
+
+					if(page['@_Type'] == 'FrontCover')
+					{
+						_poster = +page['@_Image'];
+
+						break;
+					}
+					else if(page['@_Type'] == 'InnerCover')
+					{
+						_poster = +page['@_Image'];
+					}
+				}
+
+				if(_poster !== false)
+				{
+					let index = 0;
+
+					for(let i = 0, len = files.length; i < len; i++)
+					{
+						let file = files[i];
+
+						if(!file.folder && !file.compressed && compatible.image(file.path))
+						{
+							if(index === _poster)
+							{
+								poster = file.name;
+								file.poster = true;
+
+								break;
+							}
+
+							index++;
+						}
+					}
+
+				}
+			}
+
+			for(let key in comicInfo)
+			{
+				if(comicInfo[key] instanceof Object && comicInfo[key]['#text'])
+				{
+					comicInfo[key] = comicInfo[key]['#text'];
+				}
+			}
+
+			// https://anansi-project.github.io/docs/category/schemas
+			return {
+				title: comicInfo.Title || '',
+				series: comicInfo.Series || '',
+				localizedSeries: comicInfo.LocalizedSeries || '',
+				seriesGroup: comicInfo.SeriesGroup || '',
+
+				poster: poster,
+
+				bookNumber: comicInfo.Number || 0,
+				bookTotal: comicInfo.Count || 0,
+				volume: comicInfo.Volume || 0,
+				pages: comicInfo.PageCount || 0,
+
+				storyArc: comicInfo.StoryArc || '',
+				storyArcNumber: comicInfo.StoryArcNumber || 0,
+
+				alternateSeries: comicInfo.AlternateSeries || 0,
+				alternateBookNumber: comicInfo.AlternateNumber || 0,
+				alternateBookTotal: comicInfo.AlternateCount || 0,
+
+				manga: (comicInfo.Manga == 'Yes' || comicInfo.Manga == 'YesAndRightToLeft') ? true : (comicInfo.Manga == 'No' ? false : null),
+
+				author: comicInfo.Writer || '',
+				writer: comicInfo.Writer || '',
+				penciller: comicInfo.Penciller || '',
+				inker: comicInfo.Inker || '',
+				colorist: comicInfo.Colorist || '',
+				letterer: comicInfo.Letterer || '',
+				coverArtist: comicInfo.CoverArtist || '',
+				editor: comicInfo.Editor || '',
+				translator: comicInfo.Translator || '',
+				publisher: comicInfo.Publisher || '',
+				imprint: comicInfo.Imprint || '',
+
+				ageRating: comicInfo.AgeRating || '',
+				genre: comicInfo.Genre || '',
+				tags: comicInfo.Tags || '',
+				web: comicInfo.Web || '',
+				description: comicInfo.Summary || '',
+
+				characters: comicInfo.Characters || '',
+				teams: comicInfo.Teams || '',
+				locations: comicInfo.Locations || '',
+				mainCharacterOrTeam: comicInfo.MainCharacterOrTeam || '',
+
+				releaseDate: (comicInfo.Year && comicInfo.Month && comicInfo.Day) ? comicInfo.Year+'-'+comicInfo.Month+'-'+comicInfo.Day : '',
+				year: comicInfo.Year || 0,
+				month: comicInfo.Month || 0,
+				day: comicInfo.Day || 0,
+
+				language: comicInfo.LanguageISO || '',
+				format: comicInfo.Format || '',
+				scanInformation: comicInfo.ScanInformation || '',
+				notes: comicInfo.Notes || '',
+				GTIN: comicInfo.GTIN || '',
+
+				metadata: metadata,
+			};
+		}
+
+		return {};
+
+	}
+
+	this.readMetronInfo = function(metadata) {
+
+		const getString = function(object) {
+
+			if(!object)
+				return '';
+
+			if(typeof object === 'object' && object['#text'])
+				return object['#text'];
+
+			return object || '';
+
+		}
+
+		const getArray = function(object, key = '', extraKey = false) {
+
+			if(!object)
+				return [];
+
+			const array = [];
+
+			const data = getString(object[key]);
+
+			if(typeof data !== 'object')
+				return [data];
+
+			for(const i in data)
+			{
+				let value = getString(data[i]);
+
+				if(extraKey)
+					value = getString(value[extraKey]);
+
+				if(!value)
+					continue;
+
+				array.push(value);
+			}
+
+			return array;
+
+		}
+
+		const getRoles = function(metronInfo) {
+
+			const roles = {};
+
+			const set = function(key, value) {
+
+				if(!roles[key])
+					roles[key] = {role: key, name: []};
+
+				roles[key].name.push(value);
+				return;
+
+			}
+
+			const publisher = getString(metronInfo.Publisher?.Name) || '';
+			const imprint = getString(metronInfo.Publisher?.Imprint) || '';
+
+			if(publisher) set('Publisher', publisher);
+			if(imprint) set('Imprint', imprint);
+
+			const credits = metronInfo.Credits?.Credit || [];
+
+			for(const i in credits)
+			{
+				const creadit = metronInfo.Credits.Credit[i];
+				const name = getString(creadit.Creator);
+
+				if(!name)
+					continue;
+
+				const _roles = getArray(creadit.Roles, 'Role');
+
+				for(const role of _roles)
+				{
+					set(role, name);
+				}
+			}
+
+			return roles;
+		}
+
+		const metronInfo = metadata.MetronInfo || {};
+
+		const storeDate = metronInfo.StoreDate;
+		const [_storeDate, year, month, day] = storeDate.match(/(\d{4})-(\d{2})-(\d{2})/) || ['', 0, 0, 0];
+
+		const GTIN = (metronInfo.GTIN?.ISBN || metronInfo.GTIN?.UPC) ? Object.values(metronInfo.GTIN).filter(Boolean).join(', ') : '';
+
+		const roles = getRoles(metronInfo);
+		const contributor = Object.values(roles);
+
+		// https://metron-project.github.io/docs/category/schemas
+		return {
+			title: getArray(metronInfo.Stories, 'Story').join(' - ') || '',
+			series: metronInfo.Series?.Name || '',
+			// localizedSeries: '',
+			// seriesGroup: '',
+
+			// poster: false,
+
+			bookNumber: metronInfo.Number || 0,
+			bookTotal: metronInfo.Series?.VolumeCount || 0,
+			volume: metronInfo.Series?.Volume || metronInfo.MangaVolume || 0,
+			pages: metronInfo.PageCount || 0,
+
+			storyArc: getArray(metronInfo.Arcs, 'Arc', 'Name'),
+			storyArcNumber: getArray(metronInfo.Arcs, 'Arc', 'Number'),
+
+			// alternateSeries: comicInfo.AlternateSeries || 0,
+			// alternateBookNumber: comicInfo.AlternateNumber || 0,
+			// alternateBookTotal: comicInfo.AlternateCount || 0,
+
+			// manga: (comicInfo.Manga == 'Yes' || comicInfo.Manga == 'YesAndRightToLeft') ? true : (comicInfo.Manga == 'No' ? false : null),
+
+			author: (roles.Writer?.name ?? []).map((name) => ({name})) || '',
+			// publisher: metronInfo.Publisher?.Name || '',
+			contributor: contributor || [],
+
+			/*author: comicInfo.Writer || '',
+			writer: comicInfo.Writer || '',
+			penciller: comicInfo.Penciller || '',
+			inker: comicInfo.Inker || '',
+			colorist: comicInfo.Colorist || '',
+			letterer: comicInfo.Letterer || '',
+			coverArtist: comicInfo.CoverArtist || '',
+			editor: comicInfo.Editor || '',
+			translator: comicInfo.Translator || '',
+			publisher: comicInfo.Publisher || '',
+			imprint: comicInfo.Imprint || '',*/
+
+			ageRating: metronInfo.AgeRating || '',
+			genre: getArray(metronInfo.Genres, 'Genre'),
+			tags: getArray(metronInfo.Tags, 'Tag'),
+			web: getArray(metronInfo.URLs, 'URL') || '',
+			description: metronInfo.Summary || '',
+
+			characters: getArray(metronInfo.Characters, 'Character'),
+			teams: getArray(metronInfo.Teams, 'Team'),
+			locations: getArray(metronInfo.Locations, 'Location'),
+			// mainCharacterOrTeam: '',
+
+			releaseDate: storeDate,
+			year: +year || 0,
+			month: +month || 0,
+			day: +day || 0,
+
+			language: metronInfo.Series?.['@_lang'] || '',
+			format: metronInfo.Series?.Format || '',
+			// scanInformation: '',
+			notes: metronInfo.Notes || '',
+			GTIN: GTIN || '',
+
+			metadata: metadata,
+		};
 	}
 
 	this.callbackWhenFileExtracted = false;
@@ -683,7 +1656,7 @@ var fileCompressed = function(path, _realPath = false) {
 			fs.mkdirSync(this.tmp);
 
 			if(this.config.only)
-				fs.writeFileSync(this.tmpPartialExtraction, ''); 
+				fs.writeFileSync(this.tmpPartialExtraction, '');
 		}
 		else if(!this.config.only)
 		{
@@ -706,19 +1679,44 @@ var fileCompressed = function(path, _realPath = false) {
 
 		if(this.features.progress)
 			this.setProgress(0);
+	
+		const result = await this.extractCurrent();
+		await this.rejectAllWhenExtractFile(); // Reject all posible stuck promises
 
-		if(this.features.zip)
-			return this.extractZip();
-		else if(this.features['7z'])
-			return this.extract7z();
-		else if(this.features.rar)
-			return this.extractRar();
-		else if(this.features.tar)
-			return this.extractTar();
-		else if(this.features.pdf)
-			return this.extractPdf();
+		return result;
+	}
 
-		return false;
+	this.extractCurrent = async function() {
+
+		this.setTmpUsage();
+
+		const release = await mutex.lock('extractCurrent--'+this.sha+'--'+this.features.ext+'--'+this.features.fileExt);
+		const message = 'extractCompressed | '+this.features.ext+(this.features.fileExt && this.features.ext !== this.features.fileExt ? ' ('+this.features.fileExt+')' : '')+' |'+(this.config._only ? ' ('+this.config._only.length+' files)' : '')+' '+this.path;
+
+		this.time(message);
+		let files = false;
+
+		try
+		{
+			if(this.features['7z'])
+				files = await this.extract7z();
+			else if(this.features.pdf)
+				files = await this.extractPdf();
+			else if(this.features.epub || this.features.foliate)
+				files = await this.extractEpub();
+		}
+		catch(error)
+		{
+			throw error;
+		}
+		finally
+		{
+			this.timeEnd(message);
+			release();
+		}
+
+		return files;
+
 	}
 
 	this.checkIfAlreadyExtracted = async function() {
@@ -729,10 +1727,19 @@ var fileCompressed = function(path, _realPath = false) {
 
 			for(let path in this.config.only)
 			{
-				if(!fs.existsSync(p.join(this.tmp, path)))
-					only.push(path);
+				const _path = p.join(this.path, path);
+				const globalExtracting = getGlobalExtracting(_path);
+
+				if(globalExtracting || fs.existsSync(p.join(this.tmp, path)))
+				{
+					if(globalExtracting) await globalExtracting.promise;
+					this.whenExtractFile(_path);
+				}
 				else
-					this.whenExtractFile(p.join(this.path, path));
+				{
+					setGlobalExtracting(_path);
+					only.push(path);
+				}
 			}
 
 			if(!only.length)
@@ -753,15 +1760,23 @@ var fileCompressed = function(path, _realPath = false) {
 
 				for(let i = 0, len = files.length; i < len; i++)
 				{
-					let file = files[i];
+					const file = files[i];
 
-					if(fs.existsSync(p.join(this.tmp, file.pathInCompressed)))
+					if(file.folder)
+						continue;
+
+					const _path = p.join(this.path, file.pathInCompressed);
+					const globalExtracting = getGlobalExtracting(_path);
+
+					if(globalExtracting || fs.existsSync(p.join(this.tmp, file.pathInCompressed)))
 					{
-						this.whenExtractFile(p.join(this.path, file.pathInCompressed));
+						if(globalExtracting) await globalExtracting.promise;
+						this.whenExtractFile(_path);
 						someIsExtracted = true;
 					}
 					else
 					{
+						setGlobalExtracting(_path);
 						only.push(file.pathInCompressed);
 					}
 				}
@@ -783,13 +1798,88 @@ var fileCompressed = function(path, _realPath = false) {
 
 	}
 
-	this.renderCanvas = async function(file, canvas, config = {}) {
+	this.renderBlob = async function(file, config = {}) {
 
 		this.updateConfig(config);
 		this.getFeatures();
 
 		if(this.features.pdf)
-			return this.renderCanvasPdf(file, canvas);
+			return this.renderBlobPdf(file);
+
+	}
+
+	this.saveEbookPagesCache = async function(pages, config = {}) {
+
+		if(this.features.foliate) return;
+
+		const _isServer = isServer(this.realPath);
+		const mtime = !_isServer ? fs.statSync(firstCompressedFile(this.realPath)).mtime.getTime() : 1;
+
+		const hash = sha1(this.sha+'-'+JSON.stringify(config));
+
+		const cacheFile = 'ebook-pages-'+hash+'.json';
+		const folderPath = p.join(tempFolder, 'ebook-pages-cache');
+
+		if(!fs.existsSync(folderPath))
+			fs.mkdirSync(folderPath, {recursive: true});
+
+		const ebook = await this.ebook();
+
+		const chaptersPages = ebook.chaptersPages;
+		const chaptersPagesInfo = ebook.chaptersPagesInfo;
+		const tocPages = ebook.tocPages;
+		const hrefPage = ebook.hrefPage;
+		const chaptersIdPage = ebook.chaptersIdPage;
+
+		cache.writeJson(cacheFile, {mtime, toc: pages.toc, chaptersPages, chaptersPagesInfo, tocPages, hrefPage, chaptersIdPage}, folderPath, false);
+
+	}
+
+	this.ebookPagesCache = async function(config = {}) {
+
+		if(this.features.foliate) return false;
+
+		if(this.config.cache && window.disableEbookPagesCache !== true)
+		{
+			const _isServer = isServer(this.realPath);
+			const mtime = !_isServer ? fs.statSync(firstCompressedFile(this.realPath)).mtime.getTime() : 1;
+
+			const hash = sha1(this.sha+'-'+JSON.stringify(config));
+
+			const cacheFile = 'ebook-pages-'+hash+'.json';
+			const folderPath = p.join(tempFolder, 'ebook-pages-cache');
+
+			const json = cache.readJson(cacheFile, folderPath, false);
+
+			if(json && (json.mtime == mtime || _isServer))
+			{
+				const path = p.join(folderPath, cacheFile+(cache.zstd !== false ? '.zstd' : ''));
+				fileManager.setTmpUsage(path);
+
+				return json;
+			}
+		}
+
+		return false;
+
+	}
+
+	this.ebookPages = async function(config = {}) {
+
+		this.getFeatures();
+
+		if(this.features.ebook)
+			return this.ebookPagesEpub(config);
+
+	}
+
+	this.ebook = async function(config = {}) {
+
+		this.updateConfig(config);
+		this.getFeatures();
+
+		if(this.features.ebook)
+			return this.ebookEpub();
 
 	}
 
@@ -824,17 +1914,13 @@ var fileCompressed = function(path, _realPath = false) {
 
 	this.isCompressed = function(name) {
 
-		let ext = fileExtension(name);
+		return compatible.compressed(name);
 
-		if(inArray(ext, compressedExtensions.all))
-			return true;
-
-		return false;
 	}
 
 	this.isFolder = function(path) {
 
-		if(fs.statSync(realPath(path, -1)).isDirectory())
+		if(fs.statSync(realPath(path, -1, this.prefixes)).isDirectory())
 			return true;
 
 		return false;
@@ -853,20 +1939,23 @@ var fileCompressed = function(path, _realPath = false) {
 
 	this._filesToMultidimension = function(files, dimensions, from = false) {
 
-		let _files = [];
+		const _files = [];
 
 		for(let key in dimensions)
 		{
-			let value = dimensions[key];
+			const value = dimensions[key];
 
 			if(typeof value === 'number')
 			{
-				let file = files[value];
+				const file = files[value];
 
-				let data = {
+				const data = {
 					name: key,
+					fixedName: file.fixedName || key,
+					originalName: file.originalName || file.fixedName || key,
 					path: file.path,
 					folder: file.folder ? true : false,
+					fileSize: file.fileSize || 0,
 					compressed: this.isCompressed(file.name),
 				};
 
@@ -877,12 +1966,13 @@ var fileCompressed = function(path, _realPath = false) {
 			}
 			else
 			{
-				let _name = from ? p.join(from, key) : key;
+				const _name = from ? p.join(from, key) : key;
 
 				_files.push({
 					name: key,
 					path: p.join(this.path, _name),
 					folder: true,
+					fileSize: 0,
 					files: this._filesToMultidimension(files, value, _name),
 				});
 			}
@@ -899,6 +1989,7 @@ var fileCompressed = function(path, _realPath = false) {
 				return 0;
 
 			return a.name > b.name ? 1 : -1;
+
 		});
 
 		let dimensions = {};
@@ -909,7 +2000,7 @@ var fileCompressed = function(path, _realPath = false) {
 		{
 			let file = files[i];
 			let fileIndex = i;
-			let segments = file.name.split(p.sep);
+			let segments = splitPath(file.name);
 
 			let dimension = dimensions;
 
@@ -960,576 +2051,394 @@ var fileCompressed = function(path, _realPath = false) {
 				compressed: this.isCompressed(name),
 			};
 
+			globalWhenExtractFile(path);
 			this.callbackWhenFileExtracted(file);
 		}
+		else
+		{
+			globalWhenExtractFile(path);
+		}
 
-	};
+	}
+
+	this.rejectAllWhenExtractFile = function() {
+
+		if(!this.config._only)
+			return;
+
+		for(let i = 0, len = this.config._only.length; i < len; i++)
+		{
+			globalWhenExtractFileReject(p.join(this.path, this.config._only[i]));
+		}
+
+	}
 
 	this.progressIndex = 0;
 	this.progressPrev = false;
 
-	this.setProgress = function(progress) {
+	this.progress = {};
+
+	this.setProgress = function(progress, index = false) {
+
+		index = index !== false ? index : this.contentRightIndex;
 
 		if(!progress)
 			this.progressPrev = false;
 
-		let svg = document.querySelector('.content-right .content-right-'+this.contentRightZindex+' .loading.loading96 svg');
+		if(this.progress && this.progress.multiply)
+			progress = progress * this.progress.multiply;
 
-		if(svg)
-		{
-			svg.style.animation = 'none';
-			svg.style.transform = 'rotate(-90deg)';
-		}
+		if(!this.config.progress)
+			return;
 
-		let circle = document.querySelector('.content-right .content-right-'+this.contentRightZindex+' .loading.loading96 circle');
-
-		if(circle)
-		{
-			let now = Date.now();
-
-			let speed = this.progressPrev ? Math.round(now - this.progressPrev) : 0;
-
-			this.progressPrev = now;
-
-			circle.style.animation = 'none';
-			circle.style.transition = speed+'ms stroke-dasharray';
-			circle.style.strokeDashoffset = 225;
-			circle.style.strokeDasharray = 226 + ((422 - 226) * progress);
-		}
+		const loading = document.querySelector('.content-right .content-right-'+index+' .loading.loading96');
+		events.loadingProgress(loading, progress);
 
 	}
 
-	// ZIP
-	this.zip = false;
+	this.stackOnlyInTasks = function(only, stackSize = 100) {
 
-	this.openZip = async function() {
+		const tasks = [];
 
-		// Not support this cache
-		// if(this.zip) return this.zip;
-
-		if(unzip === false) unzip = require('unzipper');
-
-		this.zip = await unzip.Open.file(this.realPath);
-
-		return this.zip;
-
-	}
-
-	this.checkZipError = async function(extract = false) {
-
-		let _this = this;
-
-		return new Promise(function(resolve, reject) {
-
-			fs.createReadStream(_this.realPath).pipe(
-				unzip.Extract({path: _this.tmp}).on('close', reject).on('error', async function(error){
-
-					if(/0xafbc7a37/.test(error.message)) // 7zip file
-					{
-						_this.getFeatures('7z');
-
-						resolve(extract ? _this.extract7z() : _this.read7z());
-					}
-					else if(/0x21726152/.test(error.message)) // rar file
-					{
-						_this.getFeatures('rar');
-
-						resolve(extract ? _this.extractRar() : _this.readRar());
-					}
-					else
-					{
-						reject(error);
-					}
-					
-				})
-			);
-
-		});
-
-	}
-
-	this.readZip = async function(callback = false) {
-
-		let files = [];
-
-		console.time('readZip');
-
-		try
+		if(only)
 		{
-			let zip = await this.openZip();
-
-			for(let i = 0, len = zip.files.length; i < len; i++)
+			for(let i = 0, len = Math.ceil(only.length / stackSize); i < len; i++)
 			{
-				let entry = zip.files[i];
-				let name = p.normalize(entry.path);
-
-				files.push({name: name, path: p.join(this.path, name), folder: (entry.type === 'Directory' ? true : false)});
-				this.setFileStatus(name, {extracted: false});
+				tasks.push(only.slice(i * stackSize, i * stackSize + stackSize));
 			}
 
-			files = this.filesToMultidimension(files);
+			return tasks;
 		}
-		catch(error)
+		else
 		{
-			files = await this.checkZipError();
+			return [only];
 		}
 
-		console.timeEnd('readZip');
-
-		return this.files = files;
-		
 	}
 
-	this.extractZip = async function(callback = false) {
+	this.stackBySize = function(only, optimalFileSize = 30, maxItems = 100, noStack = false) {
 
-		console.time('extractZip');
+		if(!only)
+			return [only];
 
-		try
+		if(noStack)
+			return [only];
+
+		optimalFileSize *= 1024 * 1024; // In bytes
+
+		const numThreads = threads.num();
+		const tasks = [];
+
+		const status = {
+			tasks: {},
+			current: 0,
+			fullSize: false,
+			full: false,
+		};
+
+		for(let i = 0, len = only.length; i < len; i++)
 		{
-			let zip = await this.openZip();
+			const name = only[i];
+			const fileSize = fileSizes.get(p.join(this.path, name)) ?? (1024 * 100); // If the size is not known, it is considered to be 100KB.
 
-			this.progressIndex = 0;
+			const task = getOptimalTask(fileSize, status, optimalFileSize, maxItems, numThreads);
 
-			let _this = this;
-			let only = this.config.only;
-
-			let promises = [];
-
-			for(let i = 0, len = zip.files.length; i < len; i++)
-			{
-				let entry = zip.files[i];
-				let name = p.normalize(entry.path);
-
-				let extract = !only || only[name] ? true : false;
-
-				if(extract)
-				{
-					let path = p.join(this.tmp, name);
-					let virtualPath = p.join(this.path, name);
-
-					if(entry.type === 'Directory')
-					{
-						if(!fs.existsSync(path))
-							fs.mkdirSync(path);
-					}
-					else
-					{
-						let folderPath = this.folderPath(path);
-
-						if(!fs.existsSync(folderPath))
-							fs.mkdirSync(folderPath, {recursive: true});
-
-						this.setFileStatus(name, {extracted: true});
-
-						promises.push(new Promise(function(resolve, reject) {
-							entry.stream().pipe(fs.createWriteStream(path)).on('error', reject).on('finish', function() {
-
-								_this.setProgress(_this.progressIndex++ / len);
-								_this.whenExtractFile(virtualPath);
-
-								resolve();
-							});
-						}));
-					}
-				}
-			}
-
-			await Promise.all(promises);
-		}
-		catch(error)
-		{
-			await this.checkZipError(true);
+			if(!tasks[task]) tasks[task] = [];
+			tasks[task].push(name); 
 		}
 
-		this.setProgress(1);
+		return tasks;
 
-		console.timeEnd('extractZip');
-
-		return;
 	}
-
-
-
 
 	// 7z
 	this._7z = false;
 
-	this.open7z = async function(extract = false, only = '') {
+	this.open7z = async function() {
 
 		// Not support this cache
 		// if(this._7z) return this._7z;
 
-		if(un7z === false) un7z = require('node-7z');
-		if(bin7z === false) bin7z = asarToAsarUnpacked(require('7zip-bin').path7za);
+		if(native7z === false) native7z = (await require(p.join(appDir, '.dist/7zip-native.mjs')).default).Archive;
 
-		if(extract)
-			this._7z = un7z.extractFull(this.realPath, this.tmp, {$bin: bin7z, $progress: true, $cherryPick: only});
-		else
-			this._7z = un7z.list(this.realPath, {$bin: bin7z});
+		this.macosStartAccessingSecurityScopedResource(this.realPath);
 
-		return this._7z;
+		// native7z.concurrency(16);
+
+		return native7z.open(this.realPath, {password: await filePassword.get(this.realPath), deflateBufferSize: 1024 * 256});
 
 	}
 
 	this.read7z = async function(callback = false) {
 
-		let files = [];
+		const self = this;
+		const optimalThreads = getOptimalThreads(this.realPath);
 
-		console.time('read7z');
-		let _this = this;
+		return threads.job(optimalThreads.readKey, {useThreads: optimalThreads.read}, async function() {
 
-		let _7z = await this.open7z();
+			const files = [];
+			const archive = await self.open7z();
 
-		return new Promise(function(resolve, reject) {
+			try
+			{
+				const entries = await archive.entries();
 
-			_7z.on('data', function(data) {
+				for(let i = 0, len = entries.length; i < len; i++)
+				{
+					const entry = entries[i];
 
-				let name = _this.removeTmp(p.normalize(data.file));
+					if(entry.isDirectory && !entry.size) // Ignore directories
+						continue;
 
-				files.push({name: name, path: p.join(_this.path, name)});
-				_this.setFileStatus(name, {extracted: false});
+					const originalName = self.removeTmp(p.normalize(entry.path));
+					const name = self.removeTmp(p.normalize(entry.extractedPath));
+					const same = originalName === name ? true : false;
 
-			}).on('end', function(data) {
+					files.push({name: name, fixedName: (!same ? name : ''), originalName: (!same ? originalName : ''), path: p.join(self.path, name), fileSize: Number(entry.size)});
+					self.setFileStatus(name, {extracted: false});
+				}
 
-				console.timeEnd('read7z');
-
-				_this.files = _this.filesToMultidimension(files);
-				resolve(_this.files);
-
-			}).on('error', function(error){
-
-				reject(error);
-
-			});
+				self.files = self.filesToMultidimension(files);
+				return self.files;
+			}
+			catch(error)
+			{
+				console.error(error);
+				throw error;
+			}
+			finally
+			{
+				await archive.close();
+			}
 
 		});
 		
 	}
 
-	this.extract7z = async function(callback = false) {
+	this.extract7z = async function() {
 
-		console.time('extract7z');
+		const self = this;
+		const optimalThreads = getOptimalThreads(this.realPath);
+		const singleDiskConcurrency = optimalThreads.extract === threads.SINGLE ? true : false;
 
-		let only = this.config.only; 
-		let _this = this;
+		const only = [];
+		const extractName = {};
 
-		let _7z = await this.open7z(true, this.config._only || false);
+		const onlyLen = this.config._only ? this.config._only.length : false;
 
-		return new Promise(function(resolve, reject) {
+		// Use original archive paths for selection; extractedPath is the platform-adjusted output name.
+		for(let i = 0; i < onlyLen; i++)
+		{
+			const file = this.config._only[i];
+			const originalName = fileOriginalName.get(file) || file;
 
-			_7z.on('data', function(data) {
+			if(!extractName[originalName])
+			{
+				extractName[originalName] = file;
+				only.push(originalName);
+			}
+		}
 
-				let extract = data.status == 'extracted' ? true : false;
+		const ext = app.extname(this.realPath);
+		const is7z = ext === '7z' || ext === 'cb7';
 
-				if(extract)
+		const MAX_FILES = 1000000;
+		const OPTIMAL_FILE_SIZE = is7z || singleDiskConcurrency ? 1000000 : 30;
+
+		let tasks = this.stackBySize(only || false, OPTIMAL_FILE_SIZE, MAX_FILES, optimalThreads.extract === threads.SINGLE);
+		tasks = rebalanceTasks(tasks);
+		const promises = [];
+
+		this.progressIndex = 1;
+
+		let extractedSome = false;
+		let error = false;
+
+		for(let i = 0, len = tasks.length; i < len; i++)
+		{
+			const onlyStack = tasks[i];
+
+			promises.push(threads.job(optimalThreads.extractKey, {useThreads: optimalThreads.extract}, async function() {
+
+				let archive = false;
+
+				try
 				{
-					let name = _this.removeTmp(p.normalize(data.file));
+					archive = await self.open7z();
 
-					_this.setFileStatus(name, {extracted: extract});
-					_this.whenExtractFile(p.join(_this.path, name));
-				}
+					await archive.extractToFolder(self.tmp, {
+						...(onlyStack ? {paths: onlyStack.map(name => name.replace(/\\/g, '/'))} : {}),
+						concurrency: 1,
+						overwrite: true,
+						maxBytes: null,
+						onExtract: function({entry, outputPath, percent}) {
 
-			}).on('progress', function(progress) {
-
-  				_this.setProgress(progress.percent / 100);
-
-			}).on('end', function(data) {
-
-				console.timeEnd('extract7z');
-
-				_this.setProgress(1);
-
-				resolve();
-
-			}).on('error', function(error) {
-
-				reject(error);
-
-			});
-
-		});
-		
-	}
-
-
-	// RAR
-	this.rar = false;
-
-	this.openRar = async function(extract = false, only = '') {
-
-		if(this.rar) return this.rar;
-
-		if(unrar === false) unrar = require('unrar');
-
-		let bin = false;
-
-		if(process.platform == 'win32' || process.platform == 'win64')
-			bin = asarToAsarUnpacked(p.join(appDir, 'unrar/UnRAR.exe'));
-		else if(process.platform == 'darwin')
-			bin = asarToAsarUnpacked(p.join(appDir, 'unrar/unrar_MacOSX_10.13.2_64bit'));
-
-		this.rar = new unrar({
-			path: this.realPath,
-			bin: bin,
-		});
-
-		return this.rar;
-
-	}
-
-	this.readRar = async function(callback = false) {
-
-		let files = [];
-
-		console.time('readRar');
-		let _this = this;
-
-		let rar = await this.openRar();
-
-		return new Promise(function(resolve, reject) {
-
-			rar.list(function(error, entries) {
-
-				if(!error)
-				{
-					for(let i = 0, len = entries.length; i < len; i++)
-					{
-						let entry = entries[i];
-						let name = _this.removeTmp(p.normalize(entry.name));
-
-						files.push({name: name, path: p.join(_this.path, name), folder: (entry.type === 'Directory' ? true : false)});
-						_this.setFileStatus(name, {extracted: false});
-					}
-
-					console.timeEnd('readRar');
-
-					_this.files = _this.filesToMultidimension(files);
-					resolve(_this.files);
-				}
-				else
-				{
-					reject(error);
-				}
-
-			});
-
-		});
-		
-	}
-
-	this.extractRar = async function(callback = false) {
-
-		console.time('extractRar');
-
-		this.progressIndex = 0;
-
-		let only = this.config.only; 
-		let _this = this;
-
-		let rar = await this.openRar();
-
-		return new Promise(function(resolve, reject) {
-
-			rar.list(async function(error, entries) {
-
-				if(!error)
-				{
-					let promises = [];
-
-					for(let i = 0, len = entries.length; i < len; i++)
-					{
-						let entry = entries[i];
-						let name = p.normalize(entry.name);
-						let extract = !only || only[name] ? true : false;
-
-						if(extract)
-						{
-							let path = p.join(_this.tmp, name);
-							let virtualPath = p.join(_this.path, name);
-
-							if(entry.type === 'Directory')
-							{
-								if(!fs.existsSync(path))
-									fs.mkdirSync(path);
-							}
+							if(onlyLen)
+								self.setProgress(self.progressIndex++ / onlyLen);
 							else
-							{
-								let folderPath = _this.folderPath(path);
+								self.setProgress(percent / 100);
 
-								if(!fs.existsSync(folderPath))
-									fs.mkdirSync(folderPath, {recursive: true});
+							const originalName = self.removeTmp(p.normalize(entry.path));
+							const name = extractName[originalName] || p.relative(self.tmp, outputPath);
 
-								_this.setFileStatus(name, {extracted: true});
+							const path = p.join(self.path, name);
 
-								promises.push(new Promise(function(resolve, reject) {
-									rar.stream(name).on('error', reject).on('end', function() {
+							self.setFileStatus(name, {extracted: true});
+							self.whenExtractFile(path);
 
-										_this.setProgress(_this.progressIndex++ / len);
-										_this.whenExtractFile(virtualPath);
+							extractedSome = true;
 
-										resolve();
+						},
+					});
+				}
+				catch(_error)
+				{
+					console.error(_error);
+					error = _error;
+				}
+				finally
+				{
+					if(archive)
+						await archive.close();
+				}
 
-									}).pipe(fs.createWriteStream(path));
-								}));
-							}
-						}
+			}));
+		}
+
+		await Promise.all(promises);
+
+		if(error)
+		{
+			if(filePassword.check(error))
+			{
+				if(fs.existsSync(this.tmp))
+					fs.rmSync(this.tmp, {recursive: true});
+
+				if(!this.config.fromThumbnailsGeneration)
+				{
+					const password = await filePassword.request(this.path);
+
+					if(password)
+					{
+						if(!fs.existsSync(this.tmp))
+							fs.mkdirSync(this.tmp);
+
+						return this.extract7z();
 					}
-
-					await Promise.all(promises);
-
-					_this.setProgress(1);
-
-					console.timeEnd('extractRar');
-
-					resolve();
-				}
-				else
-				{
-					reject(error);
 				}
 
-			});
+				this.rejectAllWhenExtractFile();
+				throw error;
+			}
 
-		});
-		
+			if(extractedSome)
+			{
+				this.saveErrorToCache(error);
+				dom.compressedError(error, false, sha1(this.path), this.path);
+			}
+			else
+			{
+				throw error;
+			}
+		}
+
+		this.setProgress(1);
+
+		return;
 	}
-
-
-	// TAR
-	this.tar = false;
-
-	this.openTar = async function() {
-
-		// Not support this cache
-		// if(this.tar) return this.tar;
-
-		if(untar === false) untar = require('tar-fs');
-
-		this.tar = fs.createReadStream(this.realPath);
-
-		return this.tar;
-
-	}
-
-	this.readTar = async function(callback = false) {
-
-		let files = [];
-
-		let tar = await this.openTar();
-		let _this = this;
-
-		console.time('readTar');
-
-		return new Promise(function(resolve, reject) {
-
-			tar.pipe(untar.extract(_this.tmp, {
-				ignore (name) {
-
-					name = _this.removeTmp(p.normalize(name));
-
-					files.push({name: name, path: p.join(_this.path, name)});
-					_this.setFileStatus(name, {extracted: false});
-
-					return true;
-				}
-			})).on('finish', function() {
-
-				console.timeEnd('readTar');
-
-				_this.files = _this.filesToMultidimension(files);
-				resolve(_this.files);
-
-			}).on('error', function(error) {
-
-				reject(error);
-
-			});
-
-		});
-		
-	}
-
-	this.extractTar = async function(callback = false) {
-
-		let tar = await this.openTar();
-
-		let only = this.config.only; 
-		let _this = this;
-
-		console.time('extractTar');
-
-		let files = [];
-		
-		return new Promise(function(resolve, reject) {
-
-			tar.pipe(untar.extract(_this.tmp, {
-				ignore (name) {
-					name = _this.removeTmp(p.normalize(name));
-
-					let extract = !only || only[name] ? true : false;
-					_this.setFileStatus(name, {extracted: extract});
-
-					if(extract)
-						files.push(p.join(_this.path, name));
-
-					return !extract;
-				}
-			})).on('finish', function() {
-
-				console.timeEnd('extractTar');
-
-				for(let i = 0, len = files.length; i < len; i++)
-				{
-					_this.whenExtractFile(files[i]);
-				}
-
-				resolve();
-
-			}).on('error', function(error) {
-
-				reject(error);
-
-			});
-
-		});
-
-	}
-
 
 
 	// PDF
 	this.pdf = false;
+	this.pdfToc = false;
 
 	this.openPdf = async function() {
 
 		if(this.pdf) return this.pdf;
 
-		if(unpdf === false)
-		{
-			unpdf = require('pdfjs-dist/build/pdf');
-			unpdf.GlobalWorkerOptions.workerSrc = p.join(appDir, 'node_modules/pdfjs-dist/build/pdf.worker.js');
-		}
+		if(unpdf === false) await loadPdfjs();
 
-		this.pdf = await unpdf.getDocument({url: this.realPath/*, nativeImageDecoderSupport: 'none', disableFontFace: true*/}).promise;
+		this.macosStartAccessingSecurityScopedResource(this.realPath);
+		this.pdf = await unpdf.getDocument({
+			url: encodeURIComponent(this.realPath).replace(/\%2F/g,'/').replace(/\%5C/g,'\\').replace(/\%3A/g, ':'),
+			wasmUrl: fileManager.posixPath(asarToAsarUnpacked(p.join(appDir, 'node_modules/pdfjs-dist/wasm/'))),
+			cMapUrl: fileManager.posixPath(asarToAsarUnpacked(p.join(appDir, 'node_modules/pdfjs-dist/cmaps/'))),
+			cMapPacked: true,
+			/*nativeImageDecoderSupport: 'none', disableFontFace: true*/
+		}).promise;
 
 		return this.pdf;
 
 	}
 
+	this.readPdfToc = async function() {
+
+		if(this.pdfToc)
+			return this.pdfToc;
+
+		const pdf = await this.openPdf();
+		const outline = await pdf.getOutline();
+
+		const getPage = async function(destination) {
+
+			if(!destination)
+				return false;
+
+			try
+			{
+				if(typeof destination === 'string')
+					destination = await pdf.getDestination(destination);
+
+				if(!Array.isArray(destination) || !destination[0])
+					return false;
+
+				return await pdf.getPageIndex(destination[0]) + 1;
+			}
+			catch(error)
+			{
+				console.warn('Failed to resolve PDF outline destination', error);
+				return false;
+			}
+
+		};
+
+		const normalize = async function(items) {
+
+			if(!Array.isArray(items))
+				return [];
+
+			return Promise.all(items.map(async function(item) {
+
+				return {
+					name: String(item.title || '').trim(),
+					page: await getPage(item.dest),
+					subitems: await normalize(item.items),
+				};
+
+			}));
+
+		};
+
+		return this.pdfToc = await normalize(outline);
+
+	}
+
 	this.readPdf = async function() {
+
+		if(this.prefixes?.pdf === 'pdf-images')
+			return this.readPdfImages();
 
 		let _this = this;
 
 		let files = [];
 
-		console.time('readPdf');
-
 		let pdf = await this.openPdf();
 		let pages = pdf.numPages;
+		let leadingZeros = Math.max(String(pages).length, 4);
 
 		for(let i = 1; i <= pages; i++)
 		{
-			let file = 'page-'+i+'.jpg';
+			let file = 'page-'+String(i).padStart(leadingZeros, '0')+'.jpg';
 
 			let page = await pdf.getPage(i);
 			let viewport = page.getViewport({scale: 1});
@@ -1540,24 +2449,155 @@ var fileCompressed = function(path, _realPath = false) {
 			this.setFileStatus(file, {page: i, extracted: false, size: size});
 		}
 
-		console.timeEnd('readPdf');
-
 		return this.files = files;
+
+	}
+
+	this.parsePdfMetadataXml = function(xml) {
+
+		const find = function(key, value) {
+
+			const isObject = (typeof value === 'object' && !Array.isArray(value) && value !== null);
+			const keys = isObject ? Object.keys(value) : 0;
+			const len = keys.length;
+			let object = {};
+
+			if(len === 1)
+			{
+				const _key = keys[0];
+
+				if(_key === 'rdf:value')
+					object[key] = value[_key];
+				else
+					object = {...object, ...find(key, value[_key])};
+			}
+			else if(len > 1)
+			{
+				for(let _key in value)
+				{
+					if(_key === 'rdf:value')
+						object[key] = value[_key];
+					else
+						object = {...object, ...find(_key, value[_key])};
+				}
+			}
+			else
+			{
+				object[key] = Array.isArray(value) ? value.join(', ') : value;
+			}
+
+			return object;
+
+		}
+
+		let metadata = {};
+
+		for(let i = 0, len = xml.length; i < len; i++)
+		{
+			for(let key in xml[i])
+			{
+				const object = find(key, xml[i][key]);
+				metadata = {...metadata, ...object};
+			}
+		}
+
+		for(let key in metadata)
+		{
+			const _key = app.extract(/([^:]+)$/, key, 1).toLowerCase();
+			if(!metadata[_key]) metadata[_key] = metadata[key];
+
+			const _key2 = key.replace(/:/g, '_').toLowerCase();
+			if(!metadata[_key2]) metadata[_key2] = metadata[key];
+		}
+
+		return metadata;
+
+	}
+
+	this.readPdfMetadata = async function() {
+
+		let pdf = await this.openPdf();
+		let metadata = await pdf.getMetadata();
+
+		let map = {};
+
+		if(metadata.metadata)
+		{
+			let _map = Object.fromEntries(metadata.metadata);
+			map._map = _map;
+
+			for(let key in _map)
+			{
+				let item = _map;
+
+				let _key = app.extract(/([^:]+)$/, key, 1);
+				if(!map[_key]) map[_key] = Array.isArray(_map[key]) ? _map[key].join(', ') : _map[key];
+			}
+		}
+
+		if(fastXmlParser === false)
+		{
+			fastXmlParser = require('fast-xml-parser').XMLParser;
+			fastXmlParser = new fastXmlParser({ignoreAttributes: false});
+		}
+
+		let metadataXml = {};
+
+		if(metadata.metadata)
+		{
+			metadataXml = fastXmlParser.parse(metadata.metadata.getRaw('data'));
+			metadataXml = this.parsePdfMetadataXml(metadataXml?.['x:xmpmeta']?.['rdf:RDF']?.['rdf:Description'] || {});
+		}
+
+		return {
+			title: metadata.info.Title || map.title || '',
+			series: metadataXml.calibre_series || metadataXml.series || map.series || '',
+
+			bookNumber: metadataXml.calibresi_series_index || metadataXml.series_index || map.series_index || app.extract(/([0-9.]+)$/, map.series ?? '') || 0,
+
+			author: map.creator || metadata.info.Author || '',
+			publisher: map.publisher || '',
+
+			subject: metadata.info.Subject || [],
+
+			description: app.stripTagsWithDOM(map.description || metadata.info.Description || metadata.info.Subject || ''),
+
+			language: metadataXml.language || map.language || metadata.info.Language || '',
+
+			web: map.identifier ? app.extract(/^(?:url|uri):(.*)/iu, map.identifier) : '',
+			identifier: map.identifier,
+
+			releaseDate: map.metadatadate || '',
+			modifiedDate: map.modifydate || '',
+
+			creatorTool: map.creatortool || '',
+			ISBN: metadataXml.isbn || map.isbn || '',
+
+			metadata: {
+				info: metadata.info,
+				map: map,
+			},
+		};
 
 	}
 
 	this.extractPdf = async function() {
 
-		console.time('extractPdf');
+		if(this.prefixes?.pdf === 'pdf-images')
+			return this.extractPdfImages();
 
 		let pdf = await this.openPdf();
 		let pages = pdf.numPages;
+		let leadingZeros = Math.max(String(pages).length, 4);
 
 		let only = this.config.only; 
 
+		let totalFiles = this.config._only ? this.config._only.length : pages;
+		let progressIndex = 1;
+
 		for(let i = 1; i <= pages; i++)
 		{
-			let file = 'page-'+i+'.jpg';
+			let file = 'page-'+String(i).padStart(leadingZeros, '0')+'.jpg';
 			let path = p.join(this.tmp, file);
 			let virtualPath = p.join(this.path, file);
 
@@ -1586,53 +2626,541 @@ var fileCompressed = function(path, _realPath = false) {
 
 				this.setFileStatus(file, {page: i, extracted: true, width: this.config.width});
 
-				this.setProgress((i - 1) / pages);
+				this.setProgress(progressIndex++ / totalFiles);
 				this.whenExtractFile(virtualPath);
 			}
 		}
 
 		this.setProgress(1);
 
-		console.timeEnd('extractPdf');
-
 		return;
 
 	}
 
-	this.renderCanvasPdf = async function(file, canvas) {
+	this.renderBlobPdf = async function(file) {
 
 		let pdf = await this.openPdf();
 		let pages = pdf.numPages;
 
 		let status = this.getFileStatus(file);
 
-		if((status && status.widthRendered !== this.config.width) || this.config.force)
+		if(status)
 		{
+			this.log('renderBlobPdf');
+
 			// Render page
 			let page = await pdf.getPage(status.page);
 
 			let scale = this.config.width / status.size.width;
 			let viewport = page.getViewport({scale: scale});
 
-			canvas.width = viewport.width;
-			canvas.height = viewport.height;
+			let canvas = document.createElement('canvas');
+			canvas.width = viewport.width = this.config.width;
+			canvas.height = viewport.height = this.config.height;
 			let context = canvas.getContext('2d');
 
 			await page.render({canvasContext: context, viewport: viewport}).promise;
 
+			const blob = await new Promise(function(resolve){
+				canvas.toBlob(resolve, 'image/png');
+			});
+
 			this.setFileStatus(file, {rendered: true, widthRendered: this.config.width});
 
-			return true;
+			return {blob: URL.createObjectURL(blob), width: viewport.width, height: viewport.height, size: blob.size};
 		}
 
 		return false;
 	}
 
+	// PDF as images (prefixes.pdf = 'pdf-images')
+	this.pdfImages = false;
+
+	this.openPdfImages = async function() {
+
+		if(this.pdfImages) return this.pdfImages;
+
+		this.macosStartAccessingSecurityScopedResource(this.realPath);
+		this.pdfImages = new pdfImagesProvider(this.realPath);
+
+		return this.pdfImages;
+
+	}
+
+	this.readPdfImages = async function() {
+
+		const files = [];
+
+		const pdfImages = await this.openPdfImages();
+		const _files = await pdfImages.read();
+
+		for(let i = 0, len = _files.length; i < len; i++)
+		{
+			const file = _files[i];
+			const name = file.name;
+
+			files.push({name: name, path: p.join(this.path, name), folder: false, compressed: false});
+			this.setFileStatus(name, {extracted: false, width: file.width, height: file.height});
+		}
+
+		return this.files = files;
+
+	}
+
+	this.extractPdfImages = async function() {
+
+		const pdfImages = await this.openPdfImages();
+
+		const self = this;
+		const only = this.config._only;
+
+		await pdfImages.extract(this.tmp, {
+			files: only,
+			progress: function(progress, name) {
+
+				const virtualPath = p.join(self.path, name);
+
+				self.setFileStatus(name, {extracted: true});
+				self.setProgress(progress);
+				self.whenExtractFile(virtualPath);
+
+			}
+		});
+
+		this.setProgress(1);
+
+		return;
+
+	}
+
+	// ePub
+	this.epub = false;
+
+	this.openEpub = async function() {
+
+		if(this.epub) return this.epub;
+
+		if(ebook.epub === false)
+			ebook.epub = require(p.join(appDir, '.dist/ebook/epub.js'));
+
+		this.macosStartAccessingSecurityScopedResource(this.realPath);
+		this.epub = ebook.epub.load(this.realPath);
+
+		return this.epub;
+
+	}
+
+	this.readEpub = async function() {
+
+		if(this.prefixes?.epub === 'epub-images')
+			return this.readEpubImages();
+
+		let _this = this;
+
+		let files = [];
+
+		let epub = await this.openEpub();
+		let _files = await epub.readEpubFiles();
+
+		for(let i = 0, len = _files.length; i < len; i++)
+		{
+			let file = _files[i];
+
+			files.push({name: file, path: p.join(this.path, file), folder: false, compressed: false});
+			this.setFileStatus(file, {extracted: false});
+		}
+
+		return this.files = files;
+
+	}
+
+	this.readEpubMetadata = async function() {
+
+		let epub = await this.openEpub();
+		let metadata = await epub.readEpubMetadata();
+
+		return {
+			title: metadata.title || '',
+			series: metadata.series || '',
+
+			bookNumber: metadata.seriesIndex || '',
+
+			author: metadata.creator || '',
+			publisher: metadata.publisher || '',
+			contributor: metadata.contributor || [],
+
+			/*author: comicInfo.Writer || '',
+			writer: comicInfo.Writer || '',
+			penciller: comicInfo.Penciller || '',
+			inker: comicInfo.Inker || '',
+			colorist: comicInfo.Colorist || '',
+			letterer: comicInfo.Letterer || '',
+			coverArtist: comicInfo.CoverArtist || '',
+			editor: comicInfo.Editor || '',
+			translator: comicInfo.Translator || '',
+			publisher: comicInfo.Publisher || '',
+			imprint: comicInfo.Imprint || '',*/
+
+			subject: metadata.subject || [],
+			genre: metadata.genre || '',
+
+			description: metadata.description || '',
+			longDescription: metadata.longDescription || '',
+			rights: metadata.rights || '',
+
+			language: metadata.language || '',
+
+			web: metadata.identifier ? app.extract(/^(?:url|uri):(.*)/iu, metadata.identifier) : '',
+			identifier: metadata.identifier,
+			source: metadata.source,
+
+			releaseDate: metadata.pubdate || '',
+			modifiedDate: metadata.modified_date || '',
+
+			ISBN: app.extract(/isbn:([0-9\-\.]+)/iu, metadata.identifier) || '',
+
+			metadata: metadata,
+		};
+
+	}
+
+	this.extractEpub = async function() {
+
+		if(this.prefixes?.epub === 'epub-images')
+			return this.extractEpubImages();
+
+		let epub = await this.openEpub();
+		let only = this.config.only;
+		let _this = this;
+
+		let files = await this.read();
+		files = this.filesToOnedimension(files);
+
+		let filesToRender = [];
+
+		for(let i = 0, len = files.length; i < len; i++)
+		{
+			let file = files[i].pathInCompressed;
+			let path = p.join(this.tmp, file);
+			let virtualPath = p.join(this.path, file);
+
+			let status = this.getFileStatus(file);
+			
+			if((!only || only[file]) && (this.config.force || !status.extracted || status.width !== this.config.width || !fs.existsSync(path)))
+			{
+				filesToRender.push({
+					name: file,
+					path: path,
+				});
+			}
+		}
+
+		let totalFiles = filesToRender.length;
+		let progressIndex = 1;
+
+		if(!onReading)
+		{
+			if(epub.extracted)
+				this.setProgress(0.5);
+			else
+				this.setProgress(0);
+		}
+
+		await epub.renderFiles(filesToRender, {width: this.config.width}, function(file){
+
+			let path = p.join(_this.tmp, file);
+			let virtualPath = p.join(_this.path, file);
+
+			_this.setFileStatus(file, {extracted: true, width: _this.config.width});
+
+			_this.setProgress(epub.extracted ? (0.5 + progressIndex++ / totalFiles / 2) : (progressIndex++ / totalFiles));
+			_this.whenExtractFile(virtualPath);
+
+		});
+
+		if(!onReading)
+			this.setProgress(1);
+
+		return;
+
+	}
+
+	this.renderEpubPage = async function(file, canvas) {
+
+
+	}
+
+	this.ebookPagesEpub = async function(config = {}) {
+
+		this.time('ebookPagesEpub: '+this.path);
+
+		let epub = await this.openEpub();
+		let _this = this;
+
+		let files = await this.read();
+		files = this.filesToOnedimension(files);
+
+		let totalFiles = files.length;
+		let progressIndex = 1;
+
+		let pages = await this.ebookPagesCache(config);
+
+		if(!pages)
+		{
+			if(epub.extracted)
+				this.setProgress(0.5);
+			else
+				this.setProgress(0);
+
+			pages = await epub.epubPages(config, function(){
+
+				// _this.setFileStatus(file, {extracted: true, width: _this.config.width});
+				_this.setProgress(epub.extracted ? (0.5 + progressIndex++ / totalFiles / 2) : (progressIndex++ / totalFiles));
+
+			});
+
+			await this.saveEbookPagesCache(pages, config);
+
+			this.setProgress(1);
+		}
+		else
+		{
+			pages = await epub.epubPages(config, false, pages);
+		}
+
+		this.timeEnd('ebookPagesEpub: '+this.path);
+
+		return pages;
+
+	}
+
+	this.ebookEpub = async function() {
+
+		let epub = await this.openEpub();
+		return epub.ebook;
+
+	}
+
+	// EPUB as images (prefixes.epub = 'epub-images')
+	this.readEpubImages = async function() {
+
+		const files = [];
+
+		const epub = await this.openEpub();
+		const _files = await epub.readEpubImages();
+
+		for(let i = 0, len = _files.length; i < len; i++)
+		{
+			const file = _files[i];
+
+			files.push({name: file, path: p.join(this.path, file), folder: false, compressed: false});
+			this.setFileStatus(file, {extracted: false});
+		}
+
+		return this.files = files;
+
+	}
+
+	this.extractEpubImages = async function() {
+
+		const epub = await this.openEpub();
+
+		const self = this;
+		const only = this.config._only;
+
+		await epub.extractEpubImages(this.tmp, {
+			files: only,
+			progress: function(progress, name) {
+
+				const virtualPath = p.join(self.path, name);
+
+				self.setFileStatus(name, {extracted: true});
+				self.setProgress(progress);
+				self.whenExtractFile(virtualPath);
+
+			}
+		});
+
+		this.setProgress(1);
+
+		return;
+
+	}
+
+	this.macosScopedResources = [];
+
+	this.macosStartAccessingSecurityScopedResource = function(path) {
+
+		if(macosMAS)
+		{
+			let securityScopedBookmarks = storage.get('securityScopedBookmarks') || {};
+			let segments = splitPath(path);
+
+			if(!segments[0])
+				segments[0] = p.sep;
+
+			for(let i = 1, len = segments.length; i < len; i++)
+			{
+				let _path = p.join(...segments);
+				let bookmark = securityScopedBookmarks[_path] || false;
+
+				if(bookmark)
+				{
+					try
+					{
+						this.macosScopedResources.push(electronRemote.app.startAccessingSecurityScopedResource(bookmark));
+						break;
+					}
+					catch {}
+				}
+
+				segments.pop();
+			}
+		}
+
+	}
+
+	this.destroy = function() {
+
+		if(this.tar) this.tar.destroy();
+		if(this.pdf) this.pdf.loadingTask.destroy();
+		if(this.epub) this.epub.destroy();
+
+		delete this.zip;
+		delete this._7z;
+		delete this.rar;
+		delete this.tar;
+		delete this.pdf;
+		delete this.epub;
+
+		this.filesStatus = {};
+
+		// Stop accessing security scoped resources
+		for(let i = 0, len = this.macosScopedResources.length; i < len; i++)
+		{
+			this.macosScopedResources[i]();
+		}
+
+		this.macosScopedResources = [];
+
+	}
+
+}
+
+var fileDataInMap = new Set();
+var fileSizes = new Map();
+var fileOriginalName = new Map();
+
+function _setFileData(files)
+{
+	for(let i = 0, len = files.length; i < len; i++)
+	{
+		const file = files[i];
+
+		if(file.files)
+		{
+			_setFileData(file.files);
+		}
+		else
+		{
+			if(file.fileSize)
+				fileSizes.set(file.path, file.fileSize);
+
+			if(file.fixedName && file.originalName)
+				fileOriginalName.set(file.fixedName, file.originalName);
+		}
+	}
+}
+
+function setFileData(path, files)
+{
+	if(fileDataInMap.has(path))
+		return;
+
+	fileDataInMap.add(path);
+	_setFileData(files);
+}
+
+var extractingPromises = {};
+var extractingPromisesST = {};
+
+function setGlobalExtracting(path)
+{
+	extractingPromisesST[path] = setTimeout(function() {
+
+		globalWhenExtractFileReject(path);
+
+	}, 600000);
+
+	let _resolve = false;
+	let _reject = false;
+
+	extractingPromises[path] = {
+		promise: new Promise(async function(resolve, reject) {
+
+			_resolve = resolve;
+			_reject = reject;
+
+		}),
+		resolve: false,
+		reject: false,
+	};
+
+	extractingPromises[path].resolve = _resolve;
+	extractingPromises[path].reject = _reject;
+}
+
+function getGlobalExtracting(path)
+{
+	return extractingPromises[path] || false;
+}
+
+function globalWhenExtractFile(path)
+{
+	if(extractingPromisesST[path]) clearTimeout(extractingPromisesST[path]);
+	
+	if(extractingPromises[path])
+	{
+		const globalExtracting = extractingPromises[path];
+		delete extractingPromises[path];
+		globalExtracting.resolve();
+	}
+}
+
+function globalWhenExtractFileReject(path)
+{
+	if(extractingPromisesST[path]) clearTimeout(extractingPromisesST[path]);
+	
+	if(extractingPromises[path])
+	{
+		const globalExtracting = extractingPromises[path];
+		delete extractingPromises[path];
+		globalExtracting.reject('Unable to extract the file: '+path);
+	}
 }
 
 // Use this to remove generated vector images if window.devicePixelRatio is changed
+let fileManagerInitialized = false, removeTmpVectorPending = false;
+
+function onAppInitialized()
+{
+	fileManagerInitialized = true;
+
+	if(removeTmpVectorPending)
+	{
+		removeTmpVectorPending = false;
+		removeTmpVector();
+	}
+}
+
 async function removeTmpVector()
 {
+	if(!fileManagerInitialized)
+	{
+		removeTmpVectorPending = true;
+		return;
+	}
+
 	let file = fileManager.file(tempFolder);
 	let folders = await file.read();
 
@@ -1648,20 +3176,101 @@ async function removeTmpVector()
 			let _devicePixelRatio = +readFile(vector);
 
 			if(devicePixelRatio !== _devicePixelRatio)
-				fs.rmdir(p.join(tempFolder, folder.name), {recursive: true, force: true}, function(){});
+				fs.rm(p.join(tempFolder, folder.name), {recursive: true, force: true}, function(){});
 		}
 	}
 }
 
-function realPath(path, index = 0)
+var downloadedCompressedFiles = {
+	list: [],
+	sizes: {},
+};
+
+function downloadedCompressedFile(path)
 {
-	let segments = path.split(p.sep);
-	let len = segments.length;
+	let realPath = fileManager.realPath(path, -1);
+
+	let totalSize = 0;
+	let list = [];
+
+	for(let i = 0, len = downloadedCompressedFiles.list.length; i < len; i++)
+	{
+		let _realPath = downloadedCompressedFiles.list[i];
+
+		if(fs.existsSync(_realPath) && _realPath !== realPath)
+		{
+			let size = downloadedCompressedFiles.sizes[_realPath] || fs.statSync(_realPath).size;
+
+			downloadedCompressedFiles.sizes[_realPath] = size;
+			list.push(_realPath);
+
+			totalSize += size;
+		}
+	}
+
+	downloadedCompressedFiles.list = list;
+	downloadedCompressedFiles.list.push(realPath);
+
+	let size = downloadedCompressedFiles.sizes[realPath] || fs.statSync(realPath).size;
+
+	downloadedCompressedFiles.sizes[realPath] = size;
+	totalSize += size;
+
+	let maxSize = ((config.tmpMaxSize || 2) / 2) * 1000 * 1000 * 1000; // 50% of tmpMaxSize
+
+	if(totalSize > maxSize)
+	{
+		let list = [];
+		let sizes = {};
+
+		for(let i = 0, len = downloadedCompressedFiles.list.length; i < len; i++)
+		{
+			let _realPath = downloadedCompressedFiles.list[i];
+			let size = downloadedCompressedFiles.sizes[_realPath] || fs.statSync(_realPath).size;
+
+			if(totalSize > maxSize)
+			{
+				if(fs.existsSync(_realPath))
+				{
+					totalSize -= size;
+					fs.unlinkSync(_realPath);
+				}
+			}
+			else
+			{
+				list.push(_realPath);
+				sizes[_realPath] = size;
+			}
+		}
+
+		downloadedCompressedFiles.list = list;
+		downloadedCompressedFiles.sizes = sizes;
+	}
+}
+
+function realPath(path, index = 0, prefixes = false)
+{
+	const _isServer = isServer(path);
+	const segments = splitPath(_isServer ? serverClient.fixPath(path) : path);
+	const len = segments.length;
+	const numSegments = len + index;
 
 	let virtualPath;
 
 	let newPath = virtualPath = (len > 0) ? (isEmpty(segments[0]) ? '/' : segments[0]) : '';
-	let numSegments = len + index;
+
+	if(_isServer)
+	{
+		let adress = p.normalize(serverClient.getAdress(path));
+
+		newPath = p.join(tempFolder, sha1(adress));
+		virtualPath = adress;
+		
+		if(!segments[1])
+			segments[0] = segments[1] = segments[2] = '';
+		else
+			segments[0] = segments[1] = '';
+	}
 
 	for(let i = 1; i < len; i++)
 	{
@@ -1670,13 +3279,49 @@ function realPath(path, index = 0)
 
 		if(i < numSegments)
 		{
-			let extension = fileExtension(newPath);
+			const extension = app.extnameC(newPath);
 
-			if(extension && inArray(extension, compressedExtensions.all)/* && fs.existsSync(newPath) && !fs.statSync(newPath).isDirectory()*/)
+			if(extension)
 			{
-				let sha = sha1(p.normalize(virtualPath));
+				const virtualPathN = p.normalize(virtualPath);
 
-				newPath = p.join(tempFolder, sha);
+				if(compatible.compressed.has(extension) /* && fs.existsSync(newPath) && !fs.statSync(newPath).isDirectory()*/)
+				{
+					let sha = sha1(virtualPathN);
+					let _prefixes = prefixes;
+
+					if(!_prefixes && (compatible.compressed.pdf.has(extension) || compatible.compressed.epub.has(extension)))
+					{
+						const fileConfig = reading.getConfig(virtualPathN, virtualPathN, false, false, true);
+
+						if(fileConfig.readingExtractDocumentImages && _prefixes?.epub !== 'epub-zip')
+							_prefixes = {pdf: 'pdf-images', epub: 'epub-images'};
+					}
+
+					if(_prefixes)
+					{
+						for(let ext in _prefixes)
+						{
+							if(compatible.compressed[ext].has(extension))
+							{
+								sha = _prefixes[ext]+'-'+sha;
+
+								break;
+							}
+						}
+					}
+
+					newPath = p.join(tempFolder, sha);
+				}
+				else if(compatible.image.convert.has(extension) && i + 1 === len)
+				{
+					const sha = sha1(p.dirname(virtualPathN));
+
+					let image = p.basename(virtualPath);
+					image = image+'.png';
+
+					newPath = p.join(tempFolder, sha, image);
+				}
 			}
 		}
 	}
@@ -1684,59 +3329,174 @@ function realPath(path, index = 0)
 	return newPath;
 }
 
-function firstCompressedFile(path, index = 0)
+async function convertUnsupportedImages(files)
 {
-	let segments = path.split(p.sep);
-	let len = segments.length;
+	const promises = [];
 
-	let newPath = (len > 0) ? (isEmpty(segments[0]) ? '/' : segments[0]) : '';
-	let numSegments = len + index;
+	for(let i = 0, len = files.length; i < len; i++)
+	{
+		const file = files[i];
+		const path = file.path;
+
+		if(!file.folder && !file.compressed && compatible.image.convert(path)) // Convert unsupported images
+			promises.push(workers.convertImage(path));
+	}
+
+	await Promise.all(promises);
+
+	return true;
+}
+
+async function blobUnsupportedImages(files, options = {useThreads: 1})
+{
+	const promises = [];
+
+	for(let i = 0, len = files.length; i < len; i++)
+	{
+		const file = files[i];
+		const path = file.path;
+
+		if(!file.folder && !file.compressed && compatible.image.blob(path)) // Convert unsupported images to Blob
+			promises.push(workers.convertImageToBlob(path, options));
+	}
+
+	await Promise.all(promises);
+
+	return true;
+}
+
+var tmpUsageST = false, tmpUsageQueue = [];
+
+function setTmpUsage(path)
+{
+	tmpUsageQueue.push(path);
+
+	if(tmpUsageST === false)
+	{
+		tmpUsageST = setTimeout(function() {
+
+			tmpUsageST = false;
+
+			const len = tmpUsageQueue.length;
+			if(len === 0) return;
+
+			const time = app.time();
+			const tmpUsage = storage.get('tmpUsage');
+
+			for(let i = 0; i < len; i++)
+			{
+				const path = tmpUsageQueue[i];
+
+				if(!tmpUsage[path]) tmpUsage[path] = {};
+				tmpUsage[path].lastAccess = time;
+			}
+
+			storage.setThrottle('tmpUsage', tmpUsage);
+			tmpUsageQueue = [];
+
+		}, 1000);
+	}
+}
+
+var serverInOfflineMode = false;
+
+function setServerInOfflineMode(value = false)
+{
+	serverInOfflineMode = value;
+}
+
+function isServer(path)
+{
+	if(/^(?:\.[\/\\]+)?(?:smb|ssh|sftp|scp|ftp|ftps|s3|webdavs?|opdsfs?)\:[\/\\]{1,2}/.test(path))
+		return true;
+
+	return false;
+}
+
+function isOpds(path)
+{
+	if(/^(?:\.[\/\\]+)?(?:opds)\:[\/\\]{1,2}/.test(path))
+		return true;
+
+	return false;
+}
+
+function isBase64(path)
+{
+	if(/^base64,/.test(path))
+		return true;
+
+	return false;
+}
+
+function isCompressed(name)
+{
+	return compatible.compressed(name);
+}
+
+function firstCompressedFile(path, index = 0, checkDirectory = true)
+{
+	const segments = splitPath(path);
+	const len = segments.length;
+
+	const newPath = (len > 0) ? (isEmpty(segments[0]) ? ['/'] : [segments[0]]) : [];
+	const numSegments = len + index;
+
+	let _isServer = isServer(path);
 
 	for(let i = 1; i < len; i++)
 	{
-		newPath = p.join(newPath, segments[i]);
+		const segment = segments[i];
+		newPath.push(segment);
 
 		if(i < numSegments)
 		{
-			let extension = fileExtension(newPath);
+			if(compatible.compressed(segment))
+			{
+				const joinedPath = join(...newPath);
 
-			if(extension && inArray(extension, compressedExtensions.all) && !fs.statSync(newPath).isDirectory())
-				return newPath;
+				if(!checkDirectory || _isServer || !fs.existsSync(joinedPath) || !fs.statSync(joinedPath).isDirectory())
+					return join(...newPath);
+			}
 		}
 	}
 
-	return newPath;
+	return join(...newPath);
+}
+
+function firstCompressedFileRealPath(path, index = 0)
+{
+	return isServer(path) ? realPath(firstCompressedFile(path, index), -1) : firstCompressedFile(path, index);
 }
 
 function lastCompressedFile(path, index = 0)
 {
-	let segments = path.split(p.sep);
-	let len = segments.length;
+	const segments = splitPath(path);
+	const len = segments.length;
 
-	let newPath = (len > 0) ? (isEmpty(segments[0]) ? '/' : segments[0]) : '';
-	let numSegments = len + index;
+	const newPath = (len > 0) ? (isEmpty(segments[0]) ? ['/'] : [segments[0]]) : [];
+	const numSegments = len + index;
 
-	let lastCompressed = false;
+	let lastCompressed = null;
 
 	for(let i = 1; i < len; i++)
 	{
-		newPath = p.join(newPath, segments[i]);
+		const segment = segments[i];
+		newPath.push(segment);
 
 		if(i < numSegments)
 		{
-			let extension = fileExtension(newPath);
-
-			if(extension && inArray(extension, compressedExtensions.all))
-				lastCompressed = newPath;
+			if(compatible.compressed(segment))
+				lastCompressed = newPath.slice();
 		}
 	}
 
-	return lastCompressed;
+	return lastCompressed ? join(...lastCompressed) : false;
 }
 
 function allCompressedFiles(path, index = 0)
 {
-	let segments = path.split(p.sep);
+	let segments = splitPath(path);
 	let len = segments.length;
 
 	let newPath = (len > 0) ? (isEmpty(segments[0]) ? '/' : segments[0]) : '';
@@ -1748,13 +3508,11 @@ function allCompressedFiles(path, index = 0)
 
 	for(let i = 1; i < len; i++)
 	{
-		newPath = p.join(newPath, segments[i]);
+		newPath = join(newPath, segments[i]);
 
 		if(i < numSegments)
 		{
-			let extension = fileExtension(newPath);
-
-			if(extension && inArray(extension, compressedExtensions.all))
+			if(compatible.compressed(newPath))
 				files.push(newPath);
 		}
 	}
@@ -1764,11 +3522,13 @@ function allCompressedFiles(path, index = 0)
 
 function containsCompressed(path, index = 0)
 {
-	let segments = path.split(p.sep);
+	let segments = splitPath(path);
 	let len = segments.length;
 
 	var virtualPath = (len > 0) ? (isEmpty(segments[0]) ? '/' : segments[0]) : '';
 	let numSegments = len + index;
+
+	let _isServer = isServer(path);
 
 	for(let i = 1; i < len; i++)
 	{
@@ -1776,9 +3536,7 @@ function containsCompressed(path, index = 0)
 
 		if(i < numSegments)
 		{
-			var extension = fileExtension(virtualPath);
-
-			if(extension && inArray(extension, compressedExtensions.all) && !fs.statSync(virtualPath).isDirectory())
+			if(compatible.compressed(virtualPath) && (_isServer || !fs.statSync(virtualPath).isDirectory()))
 			{
 				return true;
 			}
@@ -1788,39 +3546,242 @@ function containsCompressed(path, index = 0)
 	return false;
 }
 
+function compressedMetadata(path = false)
+{
+	if(!path) return false;
+
+	const sha = sha1(p.normalize(path));
+	const cacheFile = 'compressed-files-'+sha+'.json';
+
+	if(cache.existsJson(cacheFile))
+		return cache.readJson(cacheFile).metadata || false;
+
+	return false;
+}
+
+function isExtracted(path)
+{
+	const _path = realPath(path, -1);
+
+	if(_path === path) // If it's not different, it's because it's not a compressed file.
+		return true;
+
+	if(fs.existsSync(_path))
+		return true;
+
+	return false;
+}
+
+function join()
+{
+	const string = p.join.apply(null, arguments);
+	return serverClient.fixPath(string);
+}
+
+function normalize()
+{
+	const string = p.normalize.apply(null, arguments);
+	return serverClient.fixPath(string);
+}
+
+function splitPath(path)
+{
+	const first = app.extract(/^([\\\/]*[^\\\/]+)[\\\/]*/, path);
+	const segments = path.replace(/^([\\\/]*[^\\\/]+)[\\\/]*/, '').split(p.sep).filter(i => i);
+
+	segments.unshift(first);
+
+	return segments;
+}
+
+function isParentPath(parentPath, fullPath)
+{
+	parentPath = serverClient.fixPath(parentPath);
+	fullPath = serverClient.fixPath(fullPath);
+
+	parentPath = parentPath.endsWith(p.sep) ? parentPath : parentPath + p.sep;
+	fullPath = fullPath.endsWith(p.sep) ? fullPath : fullPath + p.sep;
+
+	return fullPath.startsWith(parentPath);
+}
+
 function removePathPart(path, partToRemove)
 {
-	path = path.replace(new RegExp('^\s*'+pregQuote(partToRemove)), '');
-	path = path.replace(new RegExp('^\s*'+pregQuote(p.sep)), '');
+	path = serverClient.fixPath(path);
+	partToRemove = serverClient.fixPath(partToRemove);
+
+	path = path.startsWith(partToRemove) ? path.slice(partToRemove.length) : path;
+	path = path.startsWith(p.sep) ? path.slice(p.sep.length) : path;
 
 	return path;
 }
 
 function pathType(path)
 {
-	if(inArray(mime.getType(path), compatibleMime))
+	if(compatible.image(path))
 		return {folder: false, compressed: false};
+	else if(compatible.compressed(path))
+		return {folder: false, compressed: true};
 	else if(fs.statSync(path).isDirectory())
 		return {folder: true, compressed: false};
-	else if(inArray(fileExtension(path), compressedExtensions.all))
-		return {folder: false, compressed: true};
 	else
 		return false;
 }
 
-function filtered(files, specialFiles = false)
+function posixPath(path)
 {
-	let filtered = [];
+	return path.split(p.sep).join(p.posix.sep);
+}
+
+function simpleExists(path, server = false)
+{
+	if(isServer(path) || isOpds(path))
+	{
+		// TODO: Check if server path exists from cache file list
+
+		return true;
+	}
+	else
+	{
+		path = firstCompressedFile(path, 0, false);
+
+		if(fs.existsSync(path))
+			return true;
+	}
+
+	return false;
+}
+
+function replaceReservedCharacters(filename)
+{
+	return filename.replace(/[/\\?%*:|"<>]/g, '-');
+}
+
+function genearteFilePath(saveTo, fileName)
+{
+	let path = p.join(saveTo, fileName);
+
+	const extension = p.extname(fileName);
+	const imageName = p.basename(fileName, extension);
+
+	for(let i = 1; i < 100; i++)
+	{
+		if(!fs.existsSync(path))
+			break;
+
+		path = p.join(saveTo, imageName+' ('+i+')'+extension);
+	}
+
+	return path;
+}
+
+var _ignoreFilesRegex = false, ignoreFilesRegexCache = {};
+
+function ignoreFilesRegex(ignoreFilesRegex = false, force = false)
+{
+	ignoreFilesRegex = ignoreFilesRegex || config.ignoreFilesRegex || [];
+
+	if(!force)
+	{
+		if(_ignoreFilesRegex)
+			return _ignoreFilesRegex;
+	}
+
+	const len = ignoreFilesRegex.length;
+
+	if(!len)
+	{
+		_ignoreFilesRegex = false;
+
+		return false;
+	}
+
+	ignoreFilesRegexCache = {};
+	const list = [];
+
+	for(let i = 0; i < len; i++)
+	{
+		let pattern = ignoreFilesRegex[i];
+		let flags = 'iu';
+
+		let regex = false;
+
+		if(/\/.*\/[a-z]*/.test(pattern)) // Is Regex
+		{
+			flags = app.extract(/\/.*\/([a-z]*)/, pattern, 1);
+			pattern = app.extract(/\/(.*)\/[a-z]*/, pattern, 1);
+		
+			regex = new RegExp(pattern, flags);
+		}
+		else // Is File Pattern
+		{
+			if(Minimatch === false)
+				Minimatch = require('minimatch').Minimatch;
+
+			const mm = new Minimatch(pattern, {
+				// noCase: true,
+				nocomment: true,
+				noglobstar: true,
+				optimizationLevel: 2,
+			});
+
+			regex = mm.makeRe();
+		}
+
+		list.push(regex);
+	}
+
+	let i = 0;
+
+	_ignoreFilesRegex = {
+		test: function(string) {
+
+			if(ignoreFilesRegexCache[string] !== undefined)
+				return ignoreFilesRegexCache[string];
+
+			let match = false;
+
+			for(i = 0; i < len; i++)
+			{
+				const regex = list[i];
+
+				if(regex.test(string))
+				{
+					match = true;
+					break;
+				}
+			}
+
+			if(string.length < 1000) // Avoid cache too long strings
+				ignoreFilesRegexCache[string] = match;
+
+			return match;
+
+		},
+		list: list,
+	};
+
+	return _ignoreFilesRegex;
+}
+
+function filtered(files, specialFiles = false, ignoreFiles = true)
+{
+	const ignore = ignoreFiles ? ignoreFilesRegex() : false;
+	const filtered = [];
 
 	if(files)
 	{
 		for(let i = 0, len = files.length; i < len; i++)
 		{
-			let file = files[i];
+			const file = files[i];
+			const specialFile = (specialFiles && !file.folder && !file.compressed && compatible.image.special(file.path)) ? true : false;
+
+			if(ignore && ignore.test(file.name) && !specialFile)
+				continue;
 
 			if(file.folder || file.compressed)
 				filtered.push(file);
-			else if(inArray(mime.getType(file.path), compatibleMime) || (specialFiles && inArray(app.extname(file.path), compatibleSpecialExtensions)))
+			else if(compatible.image(file.path) || specialFile)
 				filtered.push(file);
 		}
 	}
@@ -1828,31 +3789,418 @@ function filtered(files, specialFiles = false)
 	return filtered;
 }
 
-function sort(files)
+async function sort(files, options = {})
 {
-	if(files)
+	if(!files)
+		return;
+
+	const extraKey = options?.extraKey ?? '';
+
+	const sort = config['sort'+extraKey];
+	const foldersFirst = config['foldersFirst'+extraKey];
+	const compressedFirst = config['compressedFirst'+extraKey];
+	let sortInvert = config['sortInvert'+extraKey];
+
+	let order = '';
+	let key = 'name';
+
+	if(sort === 'name')
+		order = 'simple';
+	else if(sort === 'numeric')
+		order = 'numeric';
+	else if(sort === 'shuffle')
+		order = 'shuffle';
+	else // name-numeric
+		order = 'simple-numeric';
+
+	if(sort === 'last-modified')
 	{
-		let sort = config.sort;
-		let sortInvert = config.sortInvert;
-		let foldersFirst = config.foldersFirst;
+		order = 'real-numeric';
+		key = 'mtime';
+		sortInvert = !sortInvert;
 
-		let order = '';
+		files = await Promise.all(
+			files.map(async function(file) {
 
-		if(sort == 'name')
-			order = 'simple';
-		else if(sort == 'numeric')
-			order = 'numeric';
-		else
-			order = 'simple-numeric';
+				if(file.mtime || isServer(file.path) || isOpds(file.path))
+					return file;
 
-		files.sort(function (a, b) {
-			if(foldersFirst && (a.folder || a.compressed) && !(b.folder || b.compressed)) return -1; 
-			if(foldersFirst && (b.folder || b.compressed) && !(a.folder || a.compressed)) return 1; 
-			return (sortInvert) ? -(dom.orderBy(a, b, order, 'name')) : dom.orderBy(a, b, order, 'name');
-		});
+				const firstCompressed = firstCompressedFile(file.path);
 
-		return files;
+				try
+				{
+					const stats = await fsp.stat(firstCompressed);
+					file.mtime = stats.mtimeMs;
+				}
+				catch
+				{
+					file.mtime = 0;
+				}
+
+				return file;
+
+			}),
+		);
 	}
+
+	files.sort(function (a, b) {
+
+		const aFirst = (foldersFirst && a.folder) || (compressedFirst && a.compressed);
+		const bFirst = (foldersFirst && b.folder) || (compressedFirst && b.compressed);
+
+		if(aFirst && !bFirst)
+			return -1; 
+
+		if(bFirst && !aFirst)
+			return 1;
+
+		return (sortInvert) ? -(dom.orderBy(a, b, order, key)) : dom.orderBy(a, b, order, key);
+	});
+
+	return files;
+}
+
+function macosSecurityScopedBookmarks(files)
+{
+	if(macosMAS && files.bookmarks && files.bookmarks[0])
+	{
+		let securityScopedBookmarks = storage.get('securityScopedBookmarks') || {};
+
+		for(let i = 0, len = files.bookmarks.length; i < len; i++)
+		{
+			securityScopedBookmarks[p.normalize(files.filePaths[i])] = files.bookmarks[i];
+		}
+
+		storage.set('securityScopedBookmarks', securityScopedBookmarks);
+	}
+}
+
+var macosScopedResources = {};
+var macosScopedResourcesST1 = false;
+var macosScopedResourcesST2 = false;
+
+function macosStartAccessingSecurityScopedResource(path) {
+
+	if(macosMAS)
+	{
+		const securityScopedBookmarks = storage.get('securityScopedBookmarks') || {};
+		const segments = splitPath(path);
+
+		if(!segments[0])
+			segments[0] = p.sep;
+
+		let start = false;
+
+		for(let i = 1, len = segments.length; i < len; i++)
+		{
+			const _path = p.join(...segments);
+			const bookmark = securityScopedBookmarks[_path] || false;
+
+			if(bookmark)
+			{
+				try
+				{
+					if(macosScopedResources[_path])
+					{
+						macosScopedResources[_path].used = Date.now();
+					}
+					else
+					{
+						macosScopedResources[_path] = {
+							used: Date.now(),
+							stop: electronRemote.app.startAccessingSecurityScopedResource(bookmark),
+						};
+					}
+
+					start = true;
+
+					break;
+				}
+				catch {}
+			}
+
+			segments.pop();
+		}
+
+		if(start)
+		{
+			// Throttling
+			if(macosScopedResourcesST1 === false)
+			{
+				macosScopedResourcesST1 = setTimeout(function(){
+
+					macosStopAccessingSecurityScopedResource();
+					macosScopedResourcesST1 = false;
+
+				}, 500);
+			}
+
+			// Debounce
+			if(macosScopedResourcesST2 !== false) clearTimeout(macosScopedResourcesST2);
+			macosScopedResourcesST2 = setTimeout(function(){
+
+				macosStopAccessingSecurityScopedResource();
+				macosScopedResourcesST2 = false;
+
+			}, 1000 * 5);
+		}
+	}
+}
+
+// Stop accessing security scoped resources
+function macosStopAccessingSecurityScopedResource()
+{
+	for(let path in macosScopedResources)
+	{
+		const resource = macosScopedResources[path];
+
+		if(Date.now() - resource.used > 1000 * 5)
+		{
+			resource.stop();
+			delete macosScopedResources[path];
+		}			
+	}
+}
+
+function getOptimalThreads(path = false)
+{
+	const disk = diskType.check(path);
+
+	if(disk.hdd)
+		return {readKey: 'readUsingThreadsHDD', extractKey: 'extractUsingThreadsHDD', read: threads.SINGLE, extract: threads.SINGLE};
+	else
+		return {readKey: 'readUsingThreads', extractKey: 'extractUsingThreads', read: threads.ALL, extract: threads.ALL};
+}
+
+function getOptimalTask(fileSize, status, optimalFileSize, maxItems, numThreads, argLength = 0, maxArgLength = Infinity)
+{
+	if(!status.tasks[status.current])
+		status.tasks[status.current] = {size: 0, items: 0, chars: 0};
+
+	let current = status.current;
+	let task = status.tasks[current];
+
+	const tooManyChars = function(_task) {
+
+		return argLength && (_task.chars + argLength) > maxArgLength;
+
+	}
+
+	if(!status.fullSize)
+	{
+		task.size += fileSize;
+		task.items++;
+		task.chars += argLength;
+
+		if(task.size > optimalFileSize || tooManyChars(task))
+			status.current++;
+
+		if(status.current >= numThreads)
+		{
+			status.fullSize = true;
+			status.current = 0;
+		}
+	}
+	else if(!status.full)
+	{
+		let full = true;
+
+		for(let t = status.current; t < numThreads; t++)
+		{
+			task = status.tasks[t];
+
+			if(task.items >= maxItems || tooManyChars(task))
+				continue;
+
+			status.current = t;
+			full = false;
+
+			break;
+		}
+
+		current = status.current;
+		status.current++;
+
+		task.size += fileSize;
+		task.items++;
+		task.chars += argLength;
+
+		if(full)
+		{
+			status.full = true;
+			status.current = numThreads;
+		}
+		else if(status.current >= numThreads)
+		{
+			status.current = 0;
+		}
+	}
+	else
+	{
+		task.size += fileSize;
+		task.items++;
+		task.chars += argLength;
+
+		if(task.items >= maxItems || tooManyChars(task))
+			status.current++;
+	}
+
+	return current;
+}
+
+function rebalanceTasks(tasks)
+{
+    const numTasks = tasks.length;
+    if(!numTasks) return [];
+
+	const flat = tasks.flat();
+	const len = flat.length;
+
+	const avg = Math.ceil(len / numTasks);
+	const rebalance = Array.from({length: numTasks}, () => []);
+
+	for(let i = 0; i < len; i++)
+	{
+		const group = Math.min(Math.floor(i / avg), numTasks - 1);
+		rebalance[group].push(flat[i]);
+	}
+
+	return rebalance;
+}
+
+async function readChunk(filePath, {start, size})
+{
+	const fd = await fsp.open(filePath, 'r');
+
+	try
+	{
+		const buffer = Buffer.alloc(size);
+		await fd.read(buffer, 0, size, start);
+		return buffer;
+	}
+	finally
+	{
+		await fd?.close();
+	}
+}
+
+async function dirSize(dir)
+{
+	let stat = await fsp.stat(dir);
+	if(!stat.isDirectory())
+		return stat.size;
+
+	let files = await fsp.readdir(dir, {withFileTypes: true});
+	let size = 0;
+
+	for(let i = 0, len = files.length; i < len; i++)
+	{
+		let file = files[i];
+		let path = p.join(dir, file.name);
+
+		if(file.isDirectory())
+			size += await dirSize(path);
+		else if(file.isFile())
+			size += (await fsp.stat(path)).size;
+	}
+
+	return size;
+}
+
+function dirSizeSync(dir)
+{
+	let stat = fs.statSync(dir);
+	if(!stat.isDirectory())
+		return stat.size;
+
+	let files = fs.readdirSync(dir, {withFileTypes: true});
+	let size = 0;
+
+	for(let i = 0, len = files.length; i < len; i++)
+	{
+		let file = files[i];
+		let path = p.join(dir, file.name);
+
+		if(file.isDirectory())
+			size += dirSizeSync(path);
+		else if(file.isFile())
+			size += fs.statSync(path).size;
+	}
+
+	return size;
+}
+
+function copyToTmp(path)
+{
+	const name = p.basename(path);
+	const tmp = p.join(tempFolder, sha1(p.dirname(path)));
+
+	const newPath = p.join(tmp, sha1(name)+p.extname(name));
+
+	if(!fs.existsSync(tmp))
+		fs.mkdirSync(tmp, {recursive: true});
+
+	if(!fs.existsSync(newPath))
+		fs.copyFileSync(path, newPath);
+
+	const tmpUsage = storage.get('tmpUsage');
+
+	if(!tmpUsage[newPath]) tmpUsage[newPath] = {};
+	tmpUsage[newPath].lastAccess = app.time();
+
+	storage.setThrottle('tmpUsage', tmpUsage);
+
+	return newPath;
+}
+
+var blobObjectsURL = {};
+
+function fileToBlob(path)
+{
+	if(blobObjectsURL[path]) return blobObjectsURL[path];
+
+	const data = fs.readFileSync(path);
+
+	const blob = new Blob([data], {type: compatible.mime.get(path)});
+	const blobURL = URL.createObjectURL(blob);
+
+	blobObjectsURL[path] = blobURL;
+	return blobObjectsURL[path];
+}
+
+function bufferToBlob(path, buffer, mime = 'image/png')
+{
+	if(blobObjectsURL[path]) return blobObjectsURL[path];
+
+	const blob = new Blob([buffer], {type: mime});
+	const blobURL = URL.createObjectURL(blob);
+
+	blobObjectsURL[path] = blobURL;
+	return blobObjectsURL[path];
+}
+
+function getBlob(path)
+{
+	if(blobObjectsURL[path]) return blobObjectsURL[path];
+	return false;
+}
+
+function revokeObjectURL(key)
+{
+	if(!blobObjectsURL[key]) return;
+
+	URL.revokeObjectURL(blobObjectsURL[key]);
+	delete blobObjectsURL[key];
+}
+
+function revokeAllObjectURL()
+{	
+	for(let key in blobObjectsURL)
+	{
+		URL.revokeObjectURL(blobObjectsURL[key]);
+	}
+
+	blobObjectsURL = {};
 }
 
 var prevDevicePixelRatio = window.devicePixelRatio;
@@ -1869,18 +4217,62 @@ window.addEventListener('resize', function() {
 });
 
 module.exports = {
-	file: function(path) {
-		return new file(path);
+	file: function(path, _config = false) {
+		return new file(path, _config);
 	},
-	fileCompressed: function(path, realPath = false){ // This consider moving it to a separate file
-		return new fileCompressed(path, realPath);
+	fileCompressed: function(path, realPath = false, forceType = false, prefixes = false, _config = false){ // This consider moving it to a separate file
+		return new fileCompressed(path, realPath, forceType, prefixes, _config);
 	},
 	removeTmpVector: removeTmpVector,
+	removePathPart: removePathPart,
 	filtered: filtered,
+	ignoreFilesRegex: ignoreFilesRegex,
 	sort: sort,
 	realPath: realPath,
 	pathType: pathType,
+	posixPath: posixPath,
+	isCompressed: isCompressed,
+	isServer: isServer,
+	isOpds: isOpds,
+	isBase64: isBase64,
+	setServerInOfflineMode: setServerInOfflineMode,
+	serverInOfflineMode: function(){return serverInOfflineMode},
 	firstCompressedFile: firstCompressedFile,
 	lastCompressedFile: lastCompressedFile,
 	containsCompressed: containsCompressed,
+	compressedMetadata: compressedMetadata,
+	isExtracted,
+	join: join,
+	normalize: normalize,
+	splitPath: splitPath,
+	isParentPath: isParentPath,
+	simpleExists: simpleExists,
+	replaceReservedCharacters: replaceReservedCharacters,
+	genearteFilePath: genearteFilePath,
+	convertUnsupportedImages: convertUnsupportedImages,
+	blobUnsupportedImages: blobUnsupportedImages,
+	setTmpUsage: setTmpUsage,
+	macosScopedResources: function(){return macosScopedResources},
+	macosSecurityScopedBookmarks: macosSecurityScopedBookmarks,
+	macosStartAccessingSecurityScopedResource: macosStartAccessingSecurityScopedResource,
+	getOptimalThreads: getOptimalThreads,
+	getOptimalTask: getOptimalTask,
+	rebalanceTasks: rebalanceTasks,
+	readChunk: readChunk,
+	dirSize: dirSize,
+	dirSizeSync: dirSizeSync,
+	copyToTmp: copyToTmp,
+	fileToBlob: fileToBlob,
+	onAppInitialized: onAppInitialized,
+	bufferToBlob: bufferToBlob,
+	getBlob: getBlob,
+	revokeObjectURL: revokeObjectURL,
+	revokeAllObjectURL: revokeAllObjectURL,
+	originalName: function(name){return fileOriginalName.get(name) || name},
+	fileSizes: function(){return fileSizes},
+	requestFileAccess: requestFileAccess,
+	filePassword: filePassword,
+	diskType: diskType,
+	pdfImagesProvider: pdfImagesProvider,
+	compressedStreamReader: compressedStreamReader,
 }

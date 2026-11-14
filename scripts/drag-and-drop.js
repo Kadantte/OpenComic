@@ -9,6 +9,8 @@ function showDropZone(event)
 	clearTimeout(hideDropZoneST);
 	clearTimeout(showDropZoneST);
 
+	if(!event.dataTransfer.types.includes('Files') || event.dataTransfer.types.includes('text/html')) return;
+
 	allowDrag(event);
 
 	let dropZone = document.querySelector('.drop-zone');
@@ -16,7 +18,7 @@ function showDropZone(event)
 	if(!dragAndDropStarted)
 		dropZone.innerHTML = template.load('drop.zone.html');
 
-	if(event.target.classList.contains('drop-zone') || event.target.classList.contains('drop-open') || event.target.classList.contains('drop-add'))
+	if(event.target.classList.contains('drop-zone') || event.target.classList.contains('drop-open') || event.target.classList.contains('drop-add') || event.target.classList.contains('drop-open-in-new-window') || event.target.classList.contains('drop-open-in-new-tab'))
 	{
 		dragAndDropFocus = false;
 
@@ -65,22 +67,54 @@ function hideDropZone(event, force = false)
 
 function allowDrag(event)
 {
+	if(event.dataTransfer?.types.includes('application/x-opencomic-tab'))
+	{
+		tabs.drag.dragover(event);
+
+		return;
+	}
+
 	event.preventDefault();
 	event.dataTransfer.dropEffect = 'link';
 }
 
 function handleDrop(event)
 {
-	if(dragAndDropFocus && event.dataTransfer.files && event.dataTransfer.files[0] && event.dataTransfer.files[0].path)
+	if(event.dataTransfer?.types.includes('application/x-opencomic-tab'))
 	{
-		let type = dragAndDropFocus.dataset.type;
+		tabs.drag.drop(event);
 
-		if(pathIsSupported(event.dataTransfer.files[0].path))
+		return;
+	}
+
+	event.preventDefault();
+
+	const firstPath = event.dataTransfer?.files?.[0] ? electron.webUtils.getPathForFile(event.dataTransfer.files[0]) : false;
+
+	if(dragAndDropFocus && firstPath)
+	{
+		const type = dragAndDropFocus.dataset.type;
+
+		if(pathIsSupported(firstPath))
 		{
+			const files = [];
+
+			for(let i = 0, len = event.dataTransfer.files.length; i < len; i++)
+			{
+				const path = electron.webUtils.getPathForFile(event.dataTransfer.files[i]);
+
+				if(pathIsSupported(path))
+					files.push(path);
+			}
+
 			if(type == 'add')
-				addComicsToLibrary([event.dataTransfer.files[0].path]);
+				addComicsToLibrary(files);
+			else if(type == 'open-in-new-window')
+				openPathInNewWindow(files[0]);
+			else if(type == 'open-in-new-tab')
+				tabs.openPath(files[0], files[0]);
 			else
-				openComic(event.dataTransfer.files[0].path);
+				openComic(files[0]);
 		}
 		else
 		{
@@ -106,6 +140,9 @@ function handleDrop(event)
 
 function start()
 {
+	// Currently the drop event does not return securityScopedBookmarks in macOS MAS, so this would not work correctly https://github.com/electron/electron/issues/40678
+	if(macosMAS) return;
+
 	app.event(window, 'dragenter', showDropZone);
 	app.event(window, 'dragleave', hideDropZone);
 	app.event(window, 'dragover', allowDrag);

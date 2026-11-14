@@ -1,11 +1,13 @@
-
-authKeys = {
+const authKeys = {
 	anilist: {
-		clientId: 3050,
-		clientSecret: '1ZUNqGak9QAHaGvaYjOgLuGXGCTpdTr18unz5koc',
-	}
+		clientId: 39064,
+	},
+	myanimelist: {
+		clientId: '66ede34f8b00b1cc6c3480ab3923fda4',
+	},
+	mangabaka: {
+		clientId: 'RLHDttKJzgfVCyCEZINPYWDMHcTrSbDB',
+	},
 };
 
-module.exports = {
-	authKeys: authKeys,
-};
+module.exports = authKeys;

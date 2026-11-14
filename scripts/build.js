@@ -1,6 +1,8 @@
 const hb = require('handlebars'),
 	fs = require('fs'),
-	p = require('path');
+	p = require('path'),
+	{execSync} = require('child_process');
+
 
 
 // Precompile templates
@@ -41,9 +43,54 @@ for(let i = 0, len = themes.length; i < len; i++)
 	}
 }
 
-templatesJs += 'module.exports = {templatesCacheTheme: templatesCacheTheme, templatesCache: templatesCache};';
+templatesJs += 'hb.partials = hb.templates = templatesCache; module.exports = {templatesCacheTheme: templatesCacheTheme, templatesCache: templatesCache};';
 
-if(!fs.existsSync(p.join(__dirname, '../scripts/builded/')))
-	fs.mkdirSync(p.join(__dirname, '../scripts/builded/'));
+if(!fs.existsSync(p.join(__dirname, '../.dist/builded/')))
+	fs.mkdirSync(p.join(__dirname, '../.dist/builded/'));
 
-fs.writeFileSync(p.join(__dirname, '../scripts/builded/templates.js'), templatesJs);
+fs.writeFileSync(p.join(__dirname, '../.dist/builded/templates.js'), templatesJs);
+
+fs.writeFileSync(p.join(__dirname, '../.dist/installed-from-store.js'), `module.exports = {
+	check: function(){return false},
+};`);
+
+fs.writeFileSync(p.join(__dirname, '../.dist/folder-portable.js'), `module.exports = {
+	check: function(){return false},
+};`);
+
+// Get package lock versions
+const packageLock = JSON.parse(fs.readFileSync(p.join(__dirname, '../package-lock.json'), 'utf8'));
+const packageVersions = {};
+
+for(let _package in packageLock.packages)
+{
+	packageVersions[_package] = packageLock.packages[_package].version;
+}
+
+fs.writeFileSync(p.join(__dirname, '../.dist/builded/package-lock.js'), 'module.exports = '+JSON.stringify(packageVersions)+';');
+
+let commit = '';
+
+try
+{
+	commit = execSync('git rev-parse HEAD').toString().trim();
+}
+catch(err)
+{
+	console.error('Error getting commit:', err);
+}
+
+const nightly = process.env.NIGHTLY;
+
+console.log('Set Nightly');
+console.log({
+	build: nightly,
+	commit: commit,
+	commit7: commit.substring(0, 7),
+});
+
+fs.writeFileSync(p.join(__dirname, '../.dist/nightly.js'), `module.exports = {
+	build: ${nightly ? 'true' : 'false'},
+	commit: '${commit}',
+	commit7: '${commit.substring(0, 7)}',
+};`);

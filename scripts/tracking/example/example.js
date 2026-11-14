@@ -9,7 +9,8 @@ site
 	},
 	config: {
 		session: {
-			token: 'ABCDE', // Token set in login function
+			token: 'ABCDE', // Token set in login/refreshToken function
+			refreshToken: 'ABCDE', // Refresh token set in login/refreshToken function
 		},
 	},
 };
@@ -21,16 +22,18 @@ function setSiteData(siteData)
 }
 
 // Search comic/manga in site
-async function searchComic(title, callback = false)
+async function searchComic(title)
 {
-
 	// https://nodejs.org/dist/latest-v18.x/docs/api/globals.html#fetch and https://developer.mozilla.org/en-US/docs/Web/API/fetch
+	//
 	// if(controller) controller.abort();
 	// controller = new AbortController();
-	// options = {signal: controller.signal};
-	// fetch('url', options).then(async function(response){await response.json()});
+	//
+	// const options = {signal: controller.signal};
+	// const response = await fetch('url', options);
+	// const json = await response.json();
 
-	results = [];
+	const results = [];
 
 	results.push({
 		id: 0, // Comic id in site
@@ -38,7 +41,7 @@ async function searchComic(title, callback = false)
 		image: 'https://image.small', // Comic small image
 	});
 
-	callback(results);
+	return results;
 }
 
 // Return data of comic/manga
@@ -47,9 +50,10 @@ async function getComicData(siteId, callback = false)
 	// siteId = Comic id in site
 
 	// https://nodejs.org/dist/latest-v18.x/docs/api/globals.html#fetch and https://developer.mozilla.org/en-US/docs/Web/API/fetch
-	// fetch('url', options).then(async function(response){await response.json()});
+	// const response = await fetch('url', options);
+	// const json = await response.json();
 
-	callback({
+	return {
 		title: 'title', // Comic title
 		image: 'https://image.large', // Comic large image
 		chapters: 0, // Total comic chapters
@@ -58,28 +62,39 @@ async function getComicData(siteId, callback = false)
 			chapters: 0, // User viewed chapters
 			volumes: 0, // User viewed volumes
 		},
-	});
+	};
 }
 
 // Loging to site
-async function login(callback = false)
+async function login()
 {
-	// Open link to browser, for example to get a token
-	// electron.shell.openExternal('https://open-this-link-in-a-browser.com');
+	// Open link to browser and return the redirect url/uri 
+	// const url = await tracking.getRedirectResult(site.key, 'https://example.com/api/oauth/authorize?client_id='+site.auth.clientId+'&redirect_uri=opencomic://tracking/example&response_type=code');
+	// const token = url.searchParams.get('token');
 
 	// https://nodejs.org/dist/latest-v18.x/docs/api/globals.html#fetch and https://developer.mozilla.org/en-US/docs/Web/API/fetch
-	// fetch('url', options).then(async function(response){await response.json()});
-
-	// Show token dialog
-	// tracking.getTokenDialog(site.key, function(token) { });
-
-	// Show user/pass dialog
-	// tracking.getUserPassDialog(site.key, function(user, pass) { });
+	// const response = await fetch('url', options);
+	// const json = await response.json();
 
 	if(success)
-		callback({valid: true, token: body.access_token});
+		return {valid: true, token: body.access_token, refreshToken: body.refresh_token, expiresIn: body.expires_in};
 	else
-		callback({valid: false});
+		return {valid: false};
+}
+
+// Refresh session token
+async function refreshToken()
+{
+	// const refreshToken = site.config.session.refreshToken;
+
+	// https://nodejs.org/dist/latest-v18.x/docs/api/globals.html#fetch and https://developer.mozilla.org/en-US/docs/Web/API/fetch
+	// const response = await fetch('url', options);
+	// const json = await response.json();
+
+	if(success)
+		return {valid: true, token: body.access_token, refreshToken: body.refresh_token, expiresIn: body.expires_in};
+	else
+		return {valid: false};
 }
 
 // Track comic/manga
@@ -89,8 +104,11 @@ async function track(toTrack)
 	toTrack:
 	{
 		id: 0, // Comic id in site
-		chapters: 1, // Chapters to mark
-		volumes: 1, // Volumes to mark
+		chapters: 1.1, // Chapters to mark
+		chaptersInt: 1, // Chapters to mark
+		volumes: 1.1, // Volumes to mark
+		volumesInt: 1, // Volumes to mark
+		mainPath: '', // Used in tracking.setTrackingChapters
 	}
 	*/
 
@@ -100,6 +118,15 @@ async function track(toTrack)
 
 	loginDialog: Show dialog to login again
 	*/
+
+
+	/*
+	Update OpenComic tracking info	
+	tracking.setTrackingChapters(site.key, {chapters, volumes, progress: {chapters, volumes}}, toTrack.mainPath);
+
+	Send tracking data to the site
+	fetch('url', options);
+	*/
 }
 
 module.exports = {
@@ -107,5 +134,6 @@ module.exports = {
 	searchComic: searchComic,
 	getComicData: getComicData,
 	login: login,
+	refreshToken: refreshToken,
 	track: track,
 };

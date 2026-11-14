@@ -1,33 +1,70 @@
-const {app, BrowserWindow, Menu, nativeImage} = require('electron');
-const path = require('path');
+const {app, ipcMain, BrowserWindow, screen, Menu, nativeImage, shell} = require('electron');
+const fs = require('fs');
+const p = require('path');
 const url = require('url');
-const windowStateKeeper = require('electron-window-state');
+const crypto = require('crypto');
+const windowStateKeeper = require('./main/window-state.mjs').default;
+const folderPortable = require(p.join(__dirname, 'folder-portable.js'));
 
 require('@electron/remote/main').initialize();
 //remoteMain.enable(window.webContents);
 
 // Keep a global reference of the window object, if you don't, the window will
 // be closed automatically when the JavaScript object is garbage collected.
-var win, appClosing;
+const windows = new Map();
+let firstWindowCreated = false;
 
 process.traceProcessWarnings = true;
 
-function createWindow() {
-	// Create the browser window.
+function getArgValue(args, flag, defaultValue = null)
+{
+	const arg = args.find(a => a.startsWith(flag+'='));
+	if(!arg) return defaultValue;
+	return arg.split('=')[1];
+}
 
-	var mainWindowState = windowStateKeeper({
-		defaultWidth: 1100,
-		defaultHeight: 640
+function createWindow(options = {}) {
+
+	const args = options.args ?? process.argv;
+
+	// Create the browser window.
+	const id = crypto.randomUUID();
+	const newWindow = args.includes('--new-window');
+
+	let win = null;
+	let appClosing = false;
+	let windowShowed = false;
+	let sendInitData = false;
+
+	let gotSingleInstanceLock = app.requestSingleInstanceLock();
+
+	if(!gotSingleInstanceLock)
+		app.quit();
+
+	const workAreaSize = screen.getPrimaryDisplay().workAreaSize;
+
+	const windowState = windowStateKeeper({
+		path: p.join(storagePath, 'windowState.json'),
+		defaultWidth: Math.min(1100, workAreaSize.width),
+		defaultHeight: Math.min(640, workAreaSize.height),
+		fullScreen: false,
 	});
 
-	var image = nativeImage.createFromPath(path.join(__dirname, '../images/logo.png')); 
+	let image = nativeImage.createFromPath(p.join(__dirname, '../images/logo.png'));
+
+	const windowOffset = (newWindow && !windowState.isMaximized && !windowState.isFullScreen ? 24 : 0);
+
+	const x = windowOffset ? +getArgValue(args, '--window-x', windowState.x) : windowState.x;
+	const y = windowOffset ? +getArgValue(args, '--window-y', windowState.y) : windowState.y;
+	const width = windowOffset ? +getArgValue(args, '--window-width', windowState.width) : windowState.width;
+	const height = windowOffset ? +getArgValue(args, '--window-height', windowState.height) : windowState.height;
 
 	win = new BrowserWindow({
 		show: false,
-		x: mainWindowState.x,
-		y: mainWindowState.y,
-		width: mainWindowState.width,
-		height: mainWindowState.height,
+		x: x + windowOffset,
+		y: y + windowOffset,
+		width: width,
+		height: height,
 		minWidth: 320,
 		minHeight: 200,
 		icon: image,
@@ -39,13 +76,21 @@ function createWindow() {
 			enableRemoteModule: true,
 			backgroundThrottling: false,
 			nativeWindowOpen: false,
+			additionalArguments: options.args ?? [],
 		},
-		//icon: __dirname + '/icon.svg',
+		titleBarStyle: 'hidden',
+		titleBarOverlay: {
+			color: '#242a3000',
+			symbolColor: '#c2c7cf',
+			height: 40,
+		},
+		trafficLightPosition: {x: 13, y: 13},
+		backgroundColor: '#242a30',
 	});
 
-	require("@electron/remote/main").enable(win.webContents)
+	require('@electron/remote/main').enable(win.webContents)
 
-	var menuTemplate = [
+	let menuTemplate = [
 		{
 			label: '...',
 			submenu: [
@@ -56,61 +101,239 @@ function createWindow() {
 		}
 	];
 
-	var menu = Menu.buildFromTemplate(menuTemplate);
+	let menu = Menu.buildFromTemplate(menuTemplate);
 	win.setMenu(menu);
-
-	// win.webContents.openDevTools();
 
 	win.removeMenu();
 
+	const initData = {};
+
+	if(options.initHistory)
+		initData.history = options.initHistory;
+
+	if(options.initWindowId)
+		initData.windowId = options.initWindowId;
+
+	const showWindow = function(message = '') {
+
+		if(!windowShowed)
+		{
+			if(options.showInactive)
+				win.showInactive();
+			else
+				win.show();
+
+			windowShowed = true;
+
+			win.webContents.send('init-data', initData);
+			sendInitData = true;
+
+			if(message)
+				console.log(message);
+		}
+		else
+		{
+			if(win && !sendInitData && Object.keys(initData).length)
+			{
+				win.webContents.send('init-data', initData);
+				sendInitData = true;
+			}
+		}
+	}
+
+	win.once('ready-to-show', showWindow);
+
+	// https://github.com/electron/electron/issues/42409
+	win.webContents.once('did-finish-load', () => showWindow('Warning: win.show() from did-finish-load and not from ready-to-show'));
+	setTimeout(() => showWindow('Warning: win.show() from setTimeout and not from ready-to-show'), 5000);
+
 	// and load the index.html of the app.
 	win.loadURL(url.format({
-		pathname: path.join(__dirname, '../templates/index.html'),
+		pathname: p.join(__dirname, '../templates/index.html'),
 		protocol: 'file:',
 		slashes: true
 	}));
 
 	// Open the DevTools.
- 	// win.webContents.openDevTools()
+	if(configInit.openDevTools)
+		win.webContents.openDevTools();
 
-	win.on('close',	function(event) {
+	win.on('close', function(event) {
 
 		if(!appClosing)
 		{
 			appClosing = true;
+			event.preventDefault();
 
-			win.webContents.executeJavaScript('var saved = reading.saveReadingProgress(); removeTemporaryFiles(); saved;', false).then(function(value) {
+			const js = `
+				const saved = reading.progress.save();
+				tabs.restore.save(false, true, true);
+				settings.purgeTemporaryFiles();
+				cache.purge();
+				ebook.closeAllRenders();
+				workers.closeAllWorkers();
+				storage.backup.save();
+				storage.purgeOldAtomic();
+				saved;
+			`;
 
-				if(!value)
+			win.webContents.executeJavaScript(js, false).then(function() {
+
+				win.hide();
+
+				// Wait for it to save
+				setTimeout(function() {
 					win.close();
-				else // Wait for it to save
-					setTimeout(function(win){win.close();}, 200, win);
+				}, 500);
+
+			}).catch(function(error) {
+
+				console.error('Error during cleanup:', error);
+				win.close();
 
 			});
-
-			event.preventDefault();
 		}
-
 	});
 
 	// Emitted when the window is closed.
-	win.on('closed',	function() {
+	win.on('closed', function() {
+
 		// Dereference the window object, usually you would store windows
 		// in an array if your app supports multi windows, this is the time
 		// when you should delete the corresponding element.
+		windows.delete(id);
+		win = null;
+		_windows();
 
-		win = null
 	});
 
-	win.once('ready-to-show', () => {
-		
-		win.show();
+	win.webContents.on('did-reload', function() {
 
-	})
+		if(win && initData?.history)
+			win.webContents.send('init-data', initData);
 
-	mainWindowState.manage(win);
+	});
+
+	win.webContents.setWindowOpenHandler(function(details) {
+
+		shell.openExternal(details.url);
+
+		return {action: 'deny'};
+
+	});
+
+	let wasInside = false;
+
+	setInterval(function() {
+
+		if(!win || win.isDestroyed())
+			return;
+
+		const cursor = screen.getCursorScreenPoint();
+		const bounds = win.getBounds();
+
+		const inside = (cursor.x >= bounds.x) && (cursor.x <= bounds.x + bounds.width) && (cursor.y >= bounds.y) && (cursor.y <= bounds.y + bounds.height);
+
+		if(inside && !wasInside)
+			win.webContents.send('cursorenter');
+		else if(!inside && wasInside)
+			win.webContents.send('cursorleave');
+
+		wasInside = inside;
+
+	}, 100);
+
+	if(gotSingleInstanceLock && !newWindow)
+		windowState.manage(win);
+
+	windows.set(id, win);
+	firstWindowCreated = true;
+
+	if(toOpenFile && !newWindow)
+		deliverOpenFile(toOpenFile);
+
+	if(options.initHistory || options.initWindowId) // Open immediately
+	{
+		if(options.showInactive)
+			win.showInactive();
+		else
+			win.show();
+
+		windowShowed = true;
+	}
+
+	return win.id;
 }
-	
+
+let storagePath = p.join(app.getPath('userData'), 'storage');
+
+if(folderPortable.check())
+{
+	const executableDir = process.env.OPENCOMIC_PORTABLE_EXECUTABLE_DIR || process.env.PORTABLE_EXECUTABLE_DIR;
+
+	if(executableDir)
+	{
+		storagePath = p.join(executableDir, 'opencomic', 'storage');
+	}
+	else
+	{
+		const outsidePath = p.join(__dirname, '../../../../', 'opencomic');
+
+		if(fs.existsSync(outsidePath))
+			storagePath = p.join(outsidePath, 'storage');
+		else
+			storagePath = p.join(__dirname, '../../../', 'storage');
+	}
+}
+
+const configInitFile = p.join(storagePath, 'configInit.json');
+const configInit = fs.existsSync(configInitFile) ? JSON.parse(fs.readFileSync(configInitFile, 'utf8')) : {};
+
+if(configInit.forceColorProfile)
+	app.commandLine.appendSwitch('force-color-profile', configInit.forceColorProfile);
+
+var toOpenFile = false;
+
+function deliverOpenFile(filePath)
+{
+	const windowsToCheck = [...windows.values()];
+
+	if(!windowsToCheck.length)
+		return;
+
+	Promise.all(windowsToCheck.map(function(win) {
+
+		if(win.isDestroyed())
+			return false;
+
+		return win.webContents.executeJavaScript(
+			`(function(){
+				if(typeof windowHasLoaded !== 'undefined' && windowHasLoaded && typeof handleOpenFile === 'function'){handleOpenFile(${JSON.stringify(filePath)}); return true;}
+				return false;
+			})();`, false
+		).catch(function() {
+			return false;
+		});
+
+	})).then(function(results) {
+
+		if(!results.includes(true))
+			setTimeout(function() {deliverOpenFile(filePath)}, 250);
+
+	});
+}
+
+app.on('open-file', function(event, path) {
+
+	event.preventDefault();
+
+	if(!firstWindowCreated)
+		toOpenFile = path;
+	else
+		deliverOpenFile(path);
+
+});
+
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
@@ -122,21 +345,76 @@ app.on('ready', () => {
 
 // Quit when all windows are closed.
 app.on('window-all-closed', () => {
+
 	// On macOS it is common for applications and their menu bar
 	// to stay active until the user quits explicitly with Cmd + Q
-
-	if (process.platform !== 'darwin') {
+	if(process.platform !== 'darwin')
 		app.quit()
-	}
+
 })
 
 app.on('activate', () => {
+
 	// On macOS it's common to re-create a window in the app when the
 	// dock icon is clicked and there are no other windows open.
-	if (win === null) {
+	if(windows.size === 0)
 		createWindow()
-	}
+
 })
+
+ipcMain.on('open-at-login', function(event, active = false) {
+
+	app.setLoginItemSettings({
+		openAtLogin: active,
+	})
+
+});
+
+ipcMain.handle('move-to-trash', function(event, path) {
+
+	return shell.trashItem(path);
+
+});
+
+ipcMain.handle('open-new-window', function(event, options = {}) {
+
+	return createWindow(options)
+
+});
+
+ipcMain.handle('sync-windows', function(event, data = {}) {
+
+	for(const win of windows.values())
+	{
+		win.webContents.send('sync-windows', data);
+	}
+
+});
+
+function _windows()
+{
+	let firstWindow = true;
+
+	const data = {
+		type: 'windows',
+		key: '',
+		time: Date.now(),
+		num: windows.size,
+	};
+
+	for(const win of windows.values())
+	{
+		data.firstWindow = firstWindow;
+		win.webContents.send('sync-windows', data);
+		firstWindow = false;
+	}
+}
+
+ipcMain.handle('windows', function(event) {
+
+	_windows();
+
+});
 
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and require them here.

@@ -1,0 +1,20 @@
+<div class="title-bar">
+	<div class="title-bar-icon" onclick="titleBar.clickIcon()">
+		<div class="icon-18 material-icon" data-dehaze-or="keyboard_arrow_right">dehaze</div>
+	</div>
+
+	{{#if titleBarMenu}}
+	<div class="title-bar-menu label-medium"{{#unless useScreenPointTabs}} draggable="true"{{/unless}}>
+		{{#each titleBarMenu}}
+			<div class="title-bar-menu-{{@index}}" onclick="titleBar.clickMenu({{@index}})" onmouseenter="titleBar.enterMenu({{@index}});">{{label}}</div>
+		{{/each}}
+	</div>
+
+	<div class="title-bar-menus label-medium">
+		{{#each titleBarMenu}}
+			{{> title.bar.menu.html}}
+		{{/each}}
+	</div>
+
+	{{/if}}
+</div>

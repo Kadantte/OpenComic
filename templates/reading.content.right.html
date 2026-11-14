@@ -1,9 +1,21 @@
-<div class="loading loading96 align">
+{{#if loading}}
+<div class="loading loading96 align loading-show-delayed">
 	<svg viewBox="48 48 96 96">
 		<circle/>
 	</svg>
 </div>
-<div style="position: relative; overflow: hidden;">
+{{/if}}
+<div class="reading-progress body-medium">
+	<svg>
+		<text>
+			<textPath href="#progress-pages-100" startOffset="0"></textPath>
+			<textPath href="#progress-pages-100" startOffset="0"></textPath>
+		</text>
+	</svg>
+</div>
+<div class="reading-content" style="position: relative; overflow: hidden;">
+	<div class="reading-filters"><style></style><div></div></div>
+	<div class="reading-double-page-shadow-style"></div>
 	<div class="reading-skip">
 		<div class="reading-skip-top">
 			<svg viewBox="0 0 66 66" xmlns="http://www.w3.org/2000/svg">
@@ -26,23 +38,8 @@
 			</svg>
 		</div>
 	</div>
-	<div class="reading-body" style="display: none;">
+	<div class="reading-body" style="opacity: 0;">
 		<div>
-			{{#each comics}}
-				{{#if folder}}
-				<div class="r-img r-img-i{{index}} folder"></div>
-				{{else}}
-				<div class="r-img r-img-i{{index}}">
-					<oc-img>
-						{{#if canvas}}
-						<canvas data-width="{{size.width}}" data-height="{{size.height}}" data-path="{{htmlQuote path}}" data-path="{{htmlQuote path}}" data-index="{{index}}" data-name="{{htmlQuote name}}"></canvas>
-						{{else}}
-						<img src="{{chain 'encodeSrcURI' 'invertBackslash' image}}" data-path="{{htmlQuote path}}" data-index="{{index}}">
-						{{/if}}
-					</oc-img>
-				</div>
-				{{/if}}
-			{{/each}}
 		</div>
 	</div>
 </div>

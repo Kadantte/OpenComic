@@ -1,23 +1,26 @@
 <div class="tracking-current">
 	<div class="tracking-current-image" style="background-image: url({{trackingResult.image}})"></div>
-	<span class="dialog-header">{{trackingResult.title}}</span>
-	<i class="material-icon" onclick="events.closeDialog(); setTimeout(function(){tracking.searchDialog('{{siteData.key}}')}, 150)">edit</i>
-	<div class="tracking-current-progress">
-		{{#if siteData.trackingChapter}}
-		<div class="tracking-current-progress-chapters">
-			<b>{{language.reading.tracking.chapters}}:</b> <span>{{trackingResult.progress.chapters}}</span>/{{trackingResult.chapters}}
+	<div class="tracking-current-center">
+		<span class="dialog-header title-large">{{trackingResult.title}}</span>
+		<div class="tracking-current-progress">
+			{{#if siteData.trackingChapter}}
+			<div class="tracking-current-progress-chapters">
+				{{language.reading.tracking.chapters}}: <div><span>{{trackingResult.progress.chapters}}</span>/{{trackingResult.chapters}}</div>
+			</div>
+			{{/if}}
+			{{#if siteData.trackingVolume}}
+			<div class="tracking-current-progress-volumes">
+				{{language.reading.tracking.volumes}}: <div><span>{{trackingResult.progress.volumes}}</span>/{{trackingResult.volumes}}</div>
+			</div>
+			{{/if}}
 		</div>
-		{{/if}}
-		{{#if siteData.trackingVolume}}
-		<div class="tracking-current-progress-volumes">
-			<b>{{language.reading.tracking.volumes}}:</b> <span>{{trackingResult.progress.volumes}}</span>/{{trackingResult.volumes}}
-		</div>
-		{{/if}}
 	</div>
+	<a target="_blank" href="{{trackingResult.url}}"><div class="tracking-current-logo" style="background-image: url({{siteData.logo}})"></div></a>
+	<i class="material-icon" onclick="events.closeDialog(); setTimeout(function(){tracking.searchDialog('{{siteData.key}}')}, 150)">edit</i>
 </div>
 
 <div class="menu-simple-text">
-	{{language.dialog.tracking.activate}}
+	<span>{{language.dialog.tracking.activate}}</span>
 	<div class="switch{{#if siteData.tracking.active}} a{{/if}}" on="tracking.activeAndDeactivateTrackingSite('{{siteData.key}}', true)" off="tracking.activeAndDeactivateTrackingSite('{{siteData.key}}', false)">
 		<div></div>
 		<svg viewBox="0 0 52 32"><path d="M 8,0 C 3.58,0 0,3.58 0,8 0,12.42 3.58,16 8,16 8,16 8,16 8,16 12.42,16 16,12.42 16,8 16,3.58 12.42,0 8,0 8,0 8,0 8,0 Z"></path></svg>
@@ -31,13 +34,41 @@
 </div>
 
 {{#if siteData.trackingChapter}}
-<input class="input input-margin-top input-chapter" type="number" min="0" max="99999" placeholder="{{language.dialog.tracking.setChapterNumber}}"> 
+<div class="input input-margin-top{{#unless siteData.trackingVolume}} input-compact{{/unless}}">
+	<div>
+		<div class="inputBorder">
+			<div class="left"></div>
+			<div class="right"></div>
+			<div class="top">
+				<div></div>
+				<span></span> 
+			</div>
+			<div class="bottom"></div>
+		</div>
+		<div class="placeholder">{{language.dialog.tracking.setChapterNumber}}</div>
+		<input type="number" min="0" max="99999" value="{{#if trackingResult.progress.chapters}}{{trackingResult.progress.chapters}}{{/if}}" class="input-chapter">
+	</div>
+</div>
 {{/if}}
 {{#if siteData.trackingVolume}}
-<input class="input input-margin-top input-volume" type="number" min="0" max="99999" placeholder="{{language.dialog.tracking.setVolumeNumber}}">
+<div class="input input-compact{{#unless siteData.trackingChapter}} input-margin-top{{/unless}}">
+	<div>
+		<div class="inputBorder">
+			<div class="left"></div>
+			<div class="right"></div>
+			<div class="top">
+				<div></div>
+				<span></span> 
+			</div>
+			<div class="bottom"></div>
+		</div>
+		<div class="placeholder">{{language.dialog.tracking.setVolumeNumber}}</div>
+		<input type="number" min="0" max="99999" value="{{#if trackingResult.progress.volumes}}{{trackingResult.progress.volumes}}{{/if}}" class="input-volume">
+	</div>
+</div>
 {{/if}}
 
-<div class="dialog-buttons" style="margin: 0px -24px -24px 0px;">
+<div class="dialog-buttons" style="margin: 0px -10px -24px 0px;">
 	<div class="simple-button transparent">
 		<div class="touch-effect" onclick="events.closeDialog();">{{language.buttons.cancel}}</div>
 	</div>

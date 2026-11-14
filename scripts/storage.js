@@ -1,10 +1,55 @@
-var changes = 45; // Update this if readingPagesConfig is updated
+const safe = require(p.join(appDir, '.dist/storage/safe.js')),
+	driver = require(p.join(appDir, '.dist/storage/driver.mjs')).default,
+	backup = require(p.join(appDir, '.dist/storage/backup.mjs')).default,
+	syncWindows = require(p.join(appDir, '.dist/storage/sync-windows.mjs')).default;
 
-var readingPagesConfig = {
-	readingConfigName: '',
+const changes = 179; // Update this if readingPagesConfig or storageDefault is updated
+
+const readingPagesConfig = {
+	readingPresetName: '',
 	readingView: 'slide',
+	readingViewConfig: {
+		roughPageTurn: {
+			perspective: 6000,
+		},
+		smoothPageTurn: {
+			angle: 30,
+		},
+		panels: {
+			model: '', // Not used for now
+			type: 'focus', // focus, hide and immersive
+			maxZoom: {
+				active: true,
+				value: 2,
+			},
+			margin: 100,
+			focus: {
+				prevPanels: 0, // Keep focus on the previous panel
+				nextPanels: 0,
+			},
+			showFullPage: {
+				beforeFirstPanel: false,
+				afterLastPanel: false,
+			},
+			// Only in hide mode
+			upscaleMask: {
+				model: '', // Not used for now
+				scale: 1,
+			},
+			hideEffect: 'black',
+			expandPanel: 0,
+			visibility: {
+				prevPanels: -1, // -1 = all
+				nextPanels: 0,
+			},
+		},
+	},
 	readingViewSpeed: 0.3,
 	readingViewAdjustToWidth: false,
+	readingNotEnlargeMoreThanOriginalSize: true,
+	readingRotate: 0,
+	readingRotateHorizontals: 0,
+	readingForceSinglePage: false,
 	readingMargin: {
 		margin: 16,
 		top: 16,
@@ -26,32 +71,178 @@ var readingPagesConfig = {
 		left: 0,
 		right: 0
 	},
-	readingDelayComicSkip: 1,
+	readingDelayComicSkip: 2,
 	readingDoublePage: false,
+	readingDoublePageShadow: {
+		active: false,
+		size: 7,
+		opacity: 50,
+		displacement: 5,
+	},
 	readingDoNotApplyToHorizontals: true,
+	readingAlignWithNextHorizontal: true,
 	readingBlankPage: false,
 	readingManga: false,
 	readingWebtoon: false,
+	readingExtractDocumentImages: false,
+	readingSoundEffect: {
+		page: {
+			play: false,
+			volume: 1.0,
+			adaptive: true,
+			sound: 'page-1',
+		},
+	},
+	readingFilters: {
+		brightness: 100,
+		saturation: 100,
+		contrast: 100,
+		sepia: 0,
+		hueRotate: 0,
+		invert: false,
+		negative: false,
+		colorize: false,
+		onlyBlackAndWhite: true,
+		colorPreset: 'redAndBlueGray',
+		colors: [{
+			h: 0,
+			s: 0,
+			m: 1,
+		}],
+	},
+	readingEbook: {
+		integrated: true,
+		ratio: 1.4,
+		fontSize: 20,
+		fontFamily: '',
+		forceLeftToRight: false,
+		textAlign: false,
+		italic: false,
+		fontWeight: 0,
+		maxWidth: 800,
+		minMargin: 40,
+		verticalMargin: 20,
+		letterSpacing: 0,
+		wordSpacing: 0,
+		pSpacing: 4,
+		pLineHeight: 0.3,
+		lineHeight: 1.6,
+		colorsTheme: 'app',
+	},
+	readingAi: {
+		artifactRemoval: {
+			active: false,
+			model: 'opencomic-ai-artifact-removal-balanced-v3-ps',
+		},
+		descreen: {
+			active: false,
+			model: 'opencomic-ai-descreen-hard-fast-v4-preview',
+			keepBigHalftone: true,
+			minSize: 3,
+		},
+		upscale: {
+			active: false,
+			model: 'opencomic-ai-upscale-fast-v3',
+			maxMegapixels: 2,
+			scale: 4,
+			noise: 0,
+			autoScale: true,
+		},
+	},
 };
 
-var storageDefault = {
+const tabsConfig = {
+	idCounter: 0,
+	lastUsedTabs: [0],
+	list: [
+		{
+			id: 0,
+			title: '',
+			type: '',
+			icon: '',
+			active: false,
+			position: 0,
+			parents: [0],
+			data: '', // Serialized this
+		}
+	],
+};
+
+const storageDefault = {
 	config: {
 		appVersion: _package.version,
 		changes: changes,
 		language: 'en',
 		theme: 'material-design',
 		themeColor: 'blue',
+		communityTheme: {
+			id: '',
+			baseColor: '',
+			path: '',
+		},
 		nightMode: false,
+		lightModeBlackBackgroundOnReading: false,
+		nightModeBlackBackground: false,
+		nightModeWhiteBlankPage: false,
+		systemNightMode: false,
 		zoomFactor: 1,
 		foldersFirst: true,
-		viewIndex: 'module',
+		foldersFirstReading: true,
+		compressedFirst: true,
+		compressedFirstReading: true,
 		view: 'module',
-		sortIndex: 'name',
+		viewIndex: 'module',
+		viewRecentlyOpened: 'module',
 		sort: 'name-numeric',
-		sortInvertIndex: false,
+		sortIndex: 'name',
+		sortRecentlyOpened: 'last-opened',
+		sortReading: 'name-numeric',
 		sortInvert: false,
+		sortInvertIndex: false,
+		sortInvertRecentlyOpened: false,
+		sortInvertReading: false,
+		continueReadingIndex: true,
+		continueReadingRecentlyOpened: true,
+		recentlyAddedIndex: true,
+		recentlyAddedRecentlyOpened: true,
+		viewModuleSize: 150,
+		viewModuleSizeIndex: 150,
+		viewModuleSizeRecentlyOpened: 150,
+		fadeCompleted: true,
+		fadeCompletedIndex: true,
+		fadeCompletedRecentlyOpened: true,
+		progressBar: true,
+		progressBarIndex: true,
+		progressBarRecentlyOpened: true,
+		progressPages: true,
+		progressPagesIndex: true,
+		progressPagesRecentlyOpened: true,
+		progressPercent: false,
+		progressPercentIndex: false,
+		progressPercentRecentlyOpened: false,
+		sortAndView: {
+			wildcard: {
+				view: 'module',
+				sort: 'name',
+				sortInvert: false,
+				foldersFirst: true,
+				compressedFirst: true,
+				continueReading: true,
+				recentlyAdded: true,
+				viewModuleSize: 150,	
+				fadeCompleted: true,
+				progressBar: true,
+				progressPages: true,
+				progressPercent: false,
+			}
+		},
+		recentlyOpenedItems: 100,
+		recentWindows: 14,
+		labelsExpanded: true,
 		showFullPathLibrary: false,
 		showFullPathOpened: false,
+		showLibraryPath: true,
+		showFileExtension: false,
 		...readingPagesConfig,
 		readingMagnifyingGlass: false,
 		readingMagnifyingGlassZoom: 2,
@@ -60,17 +251,94 @@ var storageDefault = {
 		readingMagnifyingGlassRadius: 4,
 		readingHideContentLeft: false,
 		readingHideBarHeader: false,
+		readingHideTabsBar: false,
+		readingShowPageNumber: false,
 		readingHideContentLeftFullScreen: true,
 		readingHideBarHeaderFullScreen: true,
-		readingMaxMargin: 400,
+		readingHideTabsBarFullScreen: true,
+		readingShowBarsDelay: 0.5,
+		readingShowBarsOnClick: false,
+		readingShowPageNumberFullScreen: false,
+		readingMaxMargin: 800,
 		readingGlobalZoom: true,
-		controllerDeadZone: 0.06,
+		readingGlobalZoomSlide: true,
+		readingMoveZoomWithMouse: false,
+		readingPrevZoom: 2,
+		readingStartPrevZoom: 1,
+		readingStartWithPrevZoom: false,
+		readingResetZoomButtonToPrevZoom: false,
+		readingScrollWithMouse: false,
+		readingGoNextPrevChapterWithScroll: true,
+		readingAutodetectWebtoon: true,
+		readingDisableThumbnails: false,
+		readingStartReadingInFullScreen: false,
+		readingTrackingAtTheEnd: true,
+		readingTrackingAutoPrompt: false,
+		readingTrackingAutoPromptFavorites: true,
+		readingDiscordRcp: false,
+		readingImageInterpolationMethodDownscaling: 'lanczos3',
+		readingImageInterpolationMethodUpscaling: 'chromium',
+		readingImagesToPreload: 10,
+		readingCustomModelsFolder: '',
+		readingMusic: {
+			play: false,
+			volume: 1.0,
+			fade: 0.5,
+			sfx: {
+				active: true,
+				volume: 1.0,
+				fade: 0,
+			},
+		},
+		gamepadSensitivity: 5,
+		gamepadDeadZone: 0.1,
+		disableGamepadInput: false,
+		sensitivityInZoom: 10,
+		mouseWheelSensitivityInZoom: 10,
+		zoomMoveStep: 200,
+		scrollMovePercent: 40,
+		scrollMovePercentInVerticalMode: false,
+		disableTapZones: false,
+		middleClickAutoScrollInAllTapZones: false,
+		middleClickAutoScrollInCenterTapZone: true,
+		invertTapZonesInManga: true,
+		saveImageTemplate: '[parentFolder] - [folder] - [image] - [page]',
+		saveImageFolder: relative.path(getDownloadsPath()),
+		saveImageLastFolder: '',
+		saveImageToFolder: false,
+		downloadOpdsFolder: relative.path(p.join(getDocumentsPath(), 'OPDS')),
+		downloadOpdsToFolder: false,
+		openFilesInNewTab: true,
+		openFilesInNewWindow: false,
 		startInFullScreen: false,
+		showAlwaysTabsBar: false,
+		restoreTabsFromLastSession: true,
+		startInContinueReading: false,
+		startOnlyFromLibrary: true,
+		startOnStartup: false,
+		ignoreSingleFoldersLibrary: true,
+		ignoreFilesRegex: [
+			'',
+		],
+		openingBehaviorFolder: 'file-list',
+		openingBehaviorFile: 'continue-reading-first-page',
+		useTheFirstImageAsPosterInFolders: false,
+		useTheFirstImageAsPosterInParentFolders: false,
+		useTheFirstImageAsPosterInFiles: true,
 		renderMaxWidth: 12000,
-		checkReleases: true,
+		checkReleases: installedFromStore.check() ? false : true,
 		checkPreReleases: true,
+		checkNightlyReleases: true,
 		lastCheckedRelease: '',
 		lastCheckedReleaseTime: 0,
+		lastCheckedNightlyRelease: '',
+		serverTimeoutMultiplier: 1,
+		useCustomCacheAndTmpFolder: false,
+		customCacheAndTmpFolder: '',
+		cacheMaxSize: 256, // MB
+		cacheMaxOld: 60,
+		tmpMaxSize: 4, // GB
+		tmpMaxOld: 30,
 		trackingSites: {
 			wildcard: {
 				favorite: false,
@@ -82,18 +350,40 @@ var storageDefault = {
 				session: {
 					valid: false,
 					token: '',
+					refreshToken: '',
+					expires: 0,
+					expiresIn: 0,
 				},
 			},
 		},
+	},
+	configInit: {
+		forceColorProfile: '',
+		openDevTools: false,
+	},
+	readingShortcutPagesConfig: {
+		wildcard: {
+			key: 0,
+			labels: [
+				'',
+			],
+			...readingPagesConfig,
+		}
+	},
+	readingPagesConfig: {
+		wildcard: {
+			configKey: false,
+			...readingPagesConfig,
+		}
 	},
 	comics: [{
 		name: 'Name',
 		path: 'Files path',
 		added: 0,
 		compressed: false,
-		bookmark: false,
+		bookmark: false,  // TODO: I think this is no longer used now, but I not sure
 		folder: true,
-		readingProgress: {
+		readingProgress: { // TODO: I think this is no longer used now, but I not sure
 			path: 'Path',
 			lastReading: 0,
 			progress: 0,
@@ -101,7 +391,7 @@ var storageDefault = {
 	},
 	{
 		name: 'Pepper & Carrot',
-		path: asarToAsarUnpacked(p.join(appDir, 'Pepper & Carrot')),
+		path: relative.path(asarToAsarUnpacked(p.join(appDir, 'Pepper & Carrot'))),
 		added: 0,
 		compressed: false,
 		bookmark: false,
@@ -113,39 +403,139 @@ var storageDefault = {
 			progress: 0,
 		},
 	}],
+	recentlySearched: [
+		'',
+	],
+	masterFolders: [
+		'',
+	],
+	servers: [{
+		name: '',
+		path: '',
+		user: '',
+		pass: '',
+		auth: '',
+		domain: '',
+		showOnLibrary: false,
+		filesInSubfolders: false,
+	}],
+	customThemes: [{
+		active: false,
+		name: '',
+		path: '',
+	}],
+	favorites: {
+		wildcard: {
+			added: 0,
+		}
+	},
+	labels: [
+		'',
+	],
+	comicLabels: {
+		wildcard: [
+			'',
+		],
+	},
+	securityScopedBookmarks: {
+		wildcard: [{
+			path: '',
+			bookmark: '',
+		}]
+	},
 	bookmarks: {
 		wildcard: [{
 			index: 0,
 			path: 'Path',
+			ebook: false,
+			progress: 0,
+			chapterIndex: 0,
+			chapterProgress: 0,
 		}]
-	},
-	readingShortcutPagesConfig: {
-		wildcard: {
-			key: 0,
-			...readingPagesConfig,
-		}
-	},
-	readingPagesConfig: {
-		wildcard: {
-			configKey: false,
-			...readingPagesConfig,
-		}
 	},
 	readingProgress: {
 		wildcard: {
 			index: 0,
 			path: 'Path',
 			lastReading: 0,
+			ebook: false,
 			progress: 0,
+			chapterIndex: 0,
+			chapterProgress: 0,
+			// Visible progress
+			page: 0,
+			pages: 0,
+			percent: 0,
+			completed: false,
 		}
 	},
+	readingPages: {
+		wildcard: {
+			pages: 0,
+			lastAccess: 0,
+		},
+	},
+	customBlankPages: {
+		wildcard: {
+			wildcard: 0,
+		},
+	},
+	recentlyOpened: {
+		wildcard: {
+			path: '',
+			lastOpened: 0,
+		},
+	},
+	tabs: tabsConfig,
+	recentWindows: [{
+		id: '',
+		date: 0,
+		lastAccess: 0,
+		...tabsConfig,
+	}],
 	tracking: {
 		wildcard: {
 			wildcard: {
 				id: '',
 				active: false,
+				autoPrompt: false,
+				chapters: 0,
+				volumes: 0,
+				progress: {
+					chapters: 0,
+					volumes: 0,
+				}
 			},
 		}
+	},
+	opdsCatalogs: [{
+		title: '',
+		subtitle: '',
+		url: '',
+		downloadAuto: false,
+		showOnLeft: false,
+		pass: '',
+		user: '',
+		auth: '',
+		downloadFiles: {
+			wildcard: {
+				path: '',
+				name: '',
+			},
+		},
+	}],
+	macros: {
+		wildcard: {
+			id: '',
+			name: '',
+			toggleMode: true,
+			actions: [{
+				name: '',
+				action: '',
+				targetState: true,
+				delay: 0,
+			}],
+		},
 	},
 	shortcuts: {
 		browse: {
@@ -154,6 +544,35 @@ var storageDefault = {
 			],
 			shortcuts: {
 				wildcard: '',
+			},
+			tapZones: {
+				wildcard: {
+					wildcard: {
+						leftClick: '',
+						rightClick: '',
+						middleClick: '',
+					},
+				},
+			},
+			gamepad: {
+				wildcard: '',
+			},
+		},
+		opds: {
+			actionsConfigured: [
+				'',
+			],
+			shortcuts: {
+				wildcard: '',
+			},
+			tapZones: {
+				wildcard: {
+					wildcard: {
+						leftClick: '',
+						rightClick: '',
+						middleClick: '',
+					},
+				},
 			},
 			gamepad: {
 				wildcard: '',
@@ -166,19 +585,148 @@ var storageDefault = {
 			shortcuts: {
 				wildcard: '',
 			},
+			tapZones: {
+				wildcard: {
+					wildcard: {
+						leftClick: '',
+						rightClick: '',
+						middleClick: '',
+					},
+				},
+			},
 			gamepad: {
 				wildcard: '',
 			},
 		},
 	},
+	colorPresets: [{
+		name: '',
+		colors: [{
+			h: 0,
+			s: 0,
+			m: 1,
+		}],
+	}],
+	compressedPasswords: {
+		wildcard: '',
+	},
+	compressedMetadata: {
+		wildcard: {
+			title: '',
+			author: '',
+		}
+	},
+	disks: [{
+		name: '',
+		mount: '',
+		type: '',
+		hdd: false,
+		ssd: false,
+		nvme: false,
+	}],
 	cache: {
 		wildcard: {
 			lastAccess: 0,
 			size: 0,
 		}
 	},
-},
-storageJson = {};
+	cacheFolderThumbnails: {
+		wildcard: {
+			lastAccess: 0,
+			poster: {
+				path: '',
+				sha: '',
+			},
+			images: [{
+				path: '',
+				sha: '',
+			}],
+		}
+	},
+	tmpUsage: {
+		wildcard: {
+			lastAccess: 0,
+		}
+	},
+};
+
+const syncIgnoreKeys = ['cache', 'tmpUsage'];
+const storageJson = {};
+
+function safeGetPath(name)
+{
+	try
+	{
+		return electronRemote.app.getPath(name);
+	}
+	catch
+	{
+		return '';
+	}
+}
+
+function getDownloadsPath()
+{
+	const macosMAS = (installedFromStore.check() && process.platform == 'darwin') ? true : false;
+	let path = safeGetPath('downloads') || safeGetPath('documents') || safeGetPath('home') || '';
+
+	if(macosMAS)
+	{
+		const downloads = p.basename(path);
+		let segments = path.split(p.sep).filter(Boolean);
+
+		segments = segments.slice(0, 2);
+		segments.push(downloads);
+
+		path = p.join('/', ...segments);
+	}
+
+	return path;
+}
+
+function getDocumentsPath()
+{
+	const macosMAS = (installedFromStore.check() && process.platform == 'darwin') ? true : false;
+	let path = safeGetPath('documents') || safeGetPath('downloads') || safeGetPath('home') || '';
+
+	if(macosMAS)
+	{
+		const documents = p.basename(path);
+		let segments = path.split(p.sep).filter(Boolean);
+
+		segments = segments.slice(0, 2);
+		segments.push(documents);
+
+		path = p.join('/', ...segments);
+	}
+
+	return path;
+}
+
+function purgeOldAtomic()
+{
+	// Remove old atomic files
+	const files = fs.readdirSync(storagePath);
+	const now = Date.now();
+
+	for(const file of files)
+	{
+		const path = p.join(storagePath, file);
+		const stats = fs.statSync(path);
+
+		if((/^[a-z]+\.json\.[0-9]+$/iu.test(file) || /^[a-z]+\.json\.tmp-[a-z0-9]+$/iu.test(file)) && (now - stats.mtimeMs) > 86400000) // 24 hours
+		{
+			try
+			{
+				fs.unlinkSync(path);
+			}
+			catch(error)
+			{
+				console.error(error);
+			}
+		}
+	}
+}
 
 var languagesList = false, getLocaleUserLanguageCache = {};
 
@@ -198,7 +746,7 @@ function getLocaleUserLanguage(userLanguage = false)
 	var _userLanguage = userLanguage;
 
 	if(languagesList === false)
-		languagesList = $.parseJSON(readFileApp('/languages/languagesList.json'));
+		languagesList = JSON.parse(readFileApp('/languages/languagesList.json'));
 
 	var codes = [];
 
@@ -247,7 +795,7 @@ function parseDefaultObj(defaultObj)
 	{
 		newData = defaultObj;
 	}
-	else if($.isArray(defaultObj))
+	else if(Array.isArray(defaultObj))
 	{
 		newData = updateStorageArrayMD([], defaultObj);
 	}
@@ -257,7 +805,7 @@ function parseDefaultObj(defaultObj)
 
 		for(let key in defaultObj)
 		{
-			if($.isArray(defaultObj[key]))
+			if(Array.isArray(defaultObj[key]))
 				newData[key] = updateStorageArrayMD([], defaultObj[key]);
 			else if(key !== 'wildcard' && typeof defaultObj[key] == 'object')
 				newData[key] = parseDefaultObj(defaultObj[key]);
@@ -302,9 +850,13 @@ function updateStorageMD(data, defaultObj)
 {
 	let newData;
 
-	if($.isArray(defaultObj))
+	if(Array.isArray(defaultObj))
 	{
 		newData = updateStorageArrayMD(data, defaultObj);
+	}
+	else if(typeof defaultObj !== 'object')
+	{
+		newData = data;
 	}
 	else
 	{
@@ -331,7 +883,7 @@ function updateStorageMD(data, defaultObj)
 			{
 				newData[key] = parseDefaultObj(defaultObj[key]);
 			}
-			else if($.isArray(defaultObj[key]))
+			else if(Array.isArray(defaultObj[key]))
 			{
 				newData[key] = updateStorageArrayMD(data[key], defaultObj[key]);
 			}
@@ -349,98 +901,227 @@ function updateStorageMD(data, defaultObj)
 	return newData;
 }
 
-
-function updateVar(key, keyVar, value)
+function setKey(key, keyVar, value)
 {
 	if(typeof storageJson[key] === 'undefined')
 		storageJson[key] = {};
 
 	storageJson[key][keyVar] = value;
 
-	ejs.set(key, storageJson[key], function(error){});
+	setData(key, storageJson[key]);
+	setLastUpdate(key);
 }
 
-function update(key, value)
+function deleteKey(key, keyVar)
+{
+	if(typeof storageJson[key] === 'undefined')
+		storageJson[key] = {};
+
+	delete storageJson[key][keyVar];
+
+	setData(key, storageJson[key]);
+	setLastUpdate(key);
+}
+
+function set(key, value)
 {
 	storageJson[key] = value;
 
-	ejs.set(key, storageJson[key], function(error){});
+	setData(key, storageJson[key]);
+	setLastUpdate(key);
 }
 
 function push(key, item)
 {
 	storageJson[key].push(item);
 
-	ejs.set(key, storageJson[key], function(error){});
+	setData(key, storageJson[key]);
+	setLastUpdate(key);
 }
 
-var storageKeys = [];
+var throttles = {};
+var debounces = {};
 
-for(let key in storageDefault)
+// Improve save perfomance in places that do not require instantaneous save
+async function setThrottle(key, value)
 {
-	storageKeys.push(key);
+	storageJson[key] = value;
+
+	app.setThrottle('storage-'+key, function() {
+
+		setData(key, storageJson[key]);
+		setLastUpdate(key);
+
+	}, 300, 3000);
 }
 
-function start(callback)
+async function setData(key, data)
 {
-	ejs.setDataPath(p.join(electronRemote.app.getPath('userData'), 'storage'));
+	await driver.write(key, data, (syncWindows.num > 1) ? true : false); // If multiple windows, force write
 
-	ejs.getMany(storageKeys, function(error, data) {
+	if(syncIgnoreKeys.includes(key))
+		return;
 
-		// if(error) throw error;
+	syncWindows.storageUpdated(key);
+}
 
-		if(!isEmpty(data))
-			var config = data.config;
+const storageKeys = Object.keys(storageDefault);
 
-		for(let i in storageKeys)
+async function start(callback)
+{
+	driver.setPath(storagePath);
+
+	let data = await driver.readMany(storageKeys);
+	const setup = !data?.config?.appVersion; // Check if this is the first run
+
+	const _appVersion = data?.config?.appVersion || false;
+	const _changes = data?.config?.changes || false;
+
+	if(!setup && _changes != changes)
+	{
+		const migration = require(p.join(appDir, '.dist/migration.js'));
+		data = await migration.start(data);
+	}
+
+	for(const key of storageKeys)
+	{
+		if(setup)
 		{
-			var key = storageKeys[i];
+			if(key == 'config')
+				storageDefault[key].language = getLocaleUserLanguage();
 
-			if(typeof data == 'undefined' || typeof data[key] == 'undefined')
+			let baseData = false;
+
+			switch (key)
+			{
+				case 'opdsCatalogs':
+
+					baseData = opds.addNewDefaultCatalogs({opdsCatalogs: []}, 0).opdsCatalogs;
+
+					break;
+			}
+
+			const newData = updateStorageMD(baseData, storageDefault[key]);
+
+			driver.write(key, newData, true);
+			storageJson[key] = newData;
+		}
+		else
+		{
+			if(_appVersion != _package.version || _changes != changes)
 			{
 				if(key == 'config')
 					storageDefault[key].language = getLocaleUserLanguage();
 
-				var storageNew = updateStorageMD(false, storageDefault[key]);
+				const newData = (_changes != changes) ? updateStorageMD(data[key], storageDefault[key]) : data[key];
 
-				ejs.set(key, storageNew, function(error){});
+				if(key == 'config')
+				{
+					newData.appVersion = _package.version;
+					newData.changes = changes;
+				}
 
-				storageJson[key] = storageNew;
+				driver.write(key, newData, true);
+				storageJson[key] = newData;
 			}
 			else
 			{
-				if(config.appVersion != _package.version || config.changes != changes)
-				{
-					if(key == 'config')
-						storageDefault[key].language = getLocaleUserLanguage();
+				storageJson[key] = data[key];
+			}
+		}
+	}
 
-					if(config.changes != changes)
-						var newData = updateStorageMD(data[key], storageDefault[key]);
-					else
-						var newData = data[key];
+	callback();
 
-					if(key == 'config')
-					{
-						newData.appVersion = _package.version;
-						newData.changes = changes;
-					}
+	await app.sleep(500);
+	backup.save();
+}
 
-					ejs.set(key, newData, function(error){});
+function _config()
+{
+	config = storage.get('config');
 
-					storageJson[key] = newData;
-				}
-				else
-				{
-					storageJson[key] = data[key];
-				}
+	tempFolder = settings.getTmpFolder();
+	cache.setCacheFolder(settings.getCacheFolder());
+
+	return config;
+}
+
+async function getDataFromDiskAsync(key, callback = false)
+{
+	if(syncIgnoreKeys.includes(key) || syncWindows.num === 1 || !driver.path)
+		return;
+
+	const data = await driver.read(key);
+
+	if(app.isDifferent(storageJson[key], data))
+	{
+		storageJson[key] = data;
+		setLastUpdate(key);
+
+		if(key === 'config')
+			storage.config();
+
+		if(callback)
+			callback();
+	}
+
+	return;
+}
+
+// Periodically get data from disk to keep it updated if multiple windows are open
+async function getPeriodicallyFromDisk()
+{
+	if(syncWindows.num === 1) // Only one instance, no need to sync
+		return;
+
+	const data = await driver.readMany(storageKeys);
+
+	for(const key of storageKeys)
+	{
+		if(app.isDifferent(storageJson[key], data[key]))
+		{
+			storageJson[key] = data[key];
+			setLastUpdate(key);
+
+			if(key === 'config')
+				storage.config();
+		}
+	}
+}
+
+setInterval(getPeriodicallyFromDisk, 60000); // Every 60 seconds
+
+function updatedFromOtherInstance(key)
+{
+	getDataFromDiskAsync(key, function() {
+
+		if(storageChangeCallbacks.has(key))
+		{
+			for(const callback of storageChangeCallbacks.get(key))
+			{
+				callback(key);
 			}
 		}
 
-		callback();
 	});
 }
 
+const storageChangeCallbacks = new Map();
 
+function onChangeFromOtherInstance(keys, callback) {
+
+	if(typeof keys === 'string')
+		keys = [keys];
+
+	for(const key of keys)
+	{
+		if(!storageChangeCallbacks.has(key))
+			storageChangeCallbacks.set(key, []);
+
+		storageChangeCallbacks.get(key).push(callback);
+	}
+}
 
 function get(key)
 {
@@ -452,14 +1133,43 @@ function getKey(key, key2)
 	return storageJson[key][key2];
 }
 
+const lastUpdate = new Map();
+
+function setLastUpdate(key)
+{
+	lastUpdate.set(key, (lastUpdate.get(key) || 0) + 1);
+}
+
+function _lastUpdate(key)
+{
+	return lastUpdate.get(key) || 0;
+}
+
+function info()
+{
+	const toKB = (bytes) => (bytes / (1024 ** 1)).toFixed(1);
+	let sizes = '';
+
+	for(const key in storage.storageJson)
+	{
+		sizes += key+': '+toKB(JSON.stringify(storage.get(key)).length)+'KB\n';
+	}
+
+	console.log('');
+	console.log('Storage info: {key: size}');
+	console.log(sizes);
+}
+
 module.exports = {
 	start: start,
+	config: _config,
 	get: get,
+	set: set,
+	setThrottle: setThrottle,
+	lastUpdate: _lastUpdate,
 	getKey: getKey,
-	updateVar: updateVar,
-	setVar: updateVar,
-	set: update,
-	update: update,
+	setKey: setKey,
+	deleteKey: deleteKey,
 	push: push,
 	storageJson: storageJson,
 	updateStorageMD: updateStorageMD,
@@ -467,4 +1177,15 @@ module.exports = {
 	getLocaleUserLanguage: getLocaleUserLanguage,
 	readingPagesConfig: readingPagesConfig,
 	changes: changes,
+	getDownloadsPath: getDownloadsPath,
+	purgeOldAtomic,
+	info,
+	getDataFromDiskAsync,
+	updatedFromOtherInstance,
+	storageKeys,
+	safe,
+	driver,
+	backup,
+	syncWindows,
+	onChangeFromOtherInstance,
 };

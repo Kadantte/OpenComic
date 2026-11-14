@@ -1,6 +1,30 @@
 <div class="settings-body body-medium">
 	<h1 class="display-medium">{{language.global.theme}}</h1>
 
+	<div class="menu-simple-text gamepad-item">
+		<span>{{language.settings.theme.lightModeBlackBackgroundOnReading}}</span>
+		<div class="switch{{#if config.lightModeBlackBackgroundOnReading}} a{{/if}}" on="settings.set('lightModeBlackBackgroundOnReading', true); dom.nightModeConfig();" off="settings.set('lightModeBlackBackgroundOnReading', false); dom.nightModeConfig();">
+			<div></div>
+			<svg viewBox="0 0 52 32"><path d="M 8,0 C 3.58,0 0,3.58 0,8 0,12.42 3.58,16 8,16 8,16 8,16 8,16 12.42,16 16,12.42 16,8 16,3.58 12.42,0 8,0 8,0 8,0 8,0 Z"></path></svg>
+		</div>
+	</div>
+
+	<div class="menu-simple-text gamepad-item">
+		<span>{{language.settings.theme.nightModeBlackBackground}}</span>
+		<div class="switch{{#if config.nightModeBlackBackground}} a{{/if}}" on="settings.set('nightModeBlackBackground', true); dom.nightModeConfig();" off="settings.set('nightModeBlackBackground', false); dom.nightModeConfig();">
+			<div></div>
+			<svg viewBox="0 0 52 32"><path d="M 8,0 C 3.58,0 0,3.58 0,8 0,12.42 3.58,16 8,16 8,16 8,16 8,16 12.42,16 16,12.42 16,8 16,3.58 12.42,0 8,0 8,0 8,0 8,0 Z"></path></svg>
+		</div>
+	</div>
+
+	<div class="menu-simple-text gamepad-item">
+		<span>{{language.settings.theme.nightModeWhiteBlankPage}}</span>
+		<div class="switch{{#if config.nightModeWhiteBlankPage}} a{{/if}}" on="settings.set('nightModeWhiteBlankPage', true); dom.nightModeConfig();" off="settings.set('nightModeWhiteBlankPage', false); dom.nightModeConfig();">
+			<div></div>
+			<svg viewBox="0 0 52 32"><path d="M 8,0 C 3.58,0 0,3.58 0,8 0,12.42 3.58,16 8,16 8,16 8,16 8,16 12.42,16 16,12.42 16,8 16,3.58 12.42,0 8,0 8,0 8,0 8,0 Z"></path></svg>
+		</div>
+	</div>
+
 	<div class="theme-page">
 		{{#each themeColors}}
 
@@ -17,4 +41,38 @@
 
 		{{/each}}
 	</div>
+
+	<h2 class="headline-small">{{language.settings.theme.customThemes.main}}</h2>
+
+	<div class="settings-custom-themes">
+		
+		<div class="menu-simple-text menu-grey settings-custom-themes-empty"{{#if customThemes}} style="display: none;"{{/if}}>
+			<span>{{language.settings.theme.customThemes.noThemes}}</span>
+		</div>
+
+		<div class="settings-custom-themes-list"{{#unless customThemes}} style="display: none;"{{/unless}}>
+		</div>
+
+		<div class="simple-button filled-tonal gamepad-item" onclick="theme.addCustomTheme();">
+			<div class="touch-effect"><i class="icon-24 material-icon">add</i>{{language.settings.theme.customThemes.add}}</div>
+		</div>
+		<cb></cb>
+	</div>
+
+	<h2 class="headline-small">
+		{{language.settings.theme.communityThemes.main}}
+		<a href="https://github.com/ollm/OpenComic-Themes" target="_blank">
+			<div class="simple-button filled-tonal gamepad-item">
+				<div class="touch-effect"><i class="icon-24 material-icon">open_in_new</i>{{language.settings.theme.communityThemes.contribute}}</div>
+			</div>
+		</a>
+	</h2>
+
+	<div class="settings-community-themes">
+	
+		<div class="settings-community-themes-list">
+		</div>
+
+	</div>
+
 </div>

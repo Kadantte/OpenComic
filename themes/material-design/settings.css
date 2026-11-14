@@ -3,7 +3,7 @@
 {
 	max-width: 1200px;
 	margin: auto;
-	padding: 30px 0px 0px 0px;
+	padding: 30px 0px 30px 0px;
 	width: calc(100% + 12px);
 }
 
@@ -15,6 +15,12 @@
 .settings-body h2
 {
 	margin: 40px 0px 10px 0px;
+}
+
+.settings-body h2 .simple-button
+{
+	float: right;
+	margin-top: -4px;
 }
 
 .settings-body .big-tabs-content > div
@@ -29,7 +35,7 @@
 
 .settings-body table
 {
-	margin: 0px 24px;
+	margin: 18px 24px 0px 24px;
 	width: calc(100% - 48px);
 }
 
@@ -38,8 +44,63 @@
 	overflow: auto;
 }
 
-.settings-shortcuts-table .simple-button
+.settings-shortcuts-table .simple-button,
+.settings-tap-zones-table .simple-button
 {
 	float: right;
 	margin: 32px 24px 6px 0px;
+}
+
+.settings-shortcuts-table .simple-button.left,
+.settings-tap-zones-table .simple-button.left
+{
+	float: left;
+	margin: 32px 0px 6px 24px;
+}
+
+.settings-master-folders,
+.settings-servers,
+.settings-ignore-files,
+.settings-custom-themes
+{
+	padding: 0px 24px;
+}
+
+.settings-body .settings-save-image-folder,
+.settings-body .settings-download-opds-folder,
+.settings-body .settings-custom-cache-and-tmp-folder,
+.settings-body .settings-custom-models-folder
+{
+	padding: 0px 24px;
+	margin-top: 14px;
+}
+
+.settings-body .settings-custom-cache-and-tmp-folder
+{
+	margin-bottom: 32px;
+}
+
+.settings-master-folders-empty,
+.settings-servers-empty,
+.settings-ignore-files-empty,
+.settings-custom-themes-empty
+{
+	padding: 0px;
+	margin-bottom: 10px;
+}
+
+.settings-master-folders-list,
+.settings-servers-list,
+.settings-ignore-files-list,
+.settings-custom-themes-list
+{
+	margin: 19px 0px 13px;
+	display: flex;
+	flex-wrap: wrap;
+}
+
+.settings-save-image-folder,
+.settings-download-opds-folder
+{
+	transition: 0.2s;
 }

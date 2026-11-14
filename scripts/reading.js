@@ -1,174 +1,22 @@
-const readingRender = require(p.join(appDir, 'scripts/reading/render.js'));
+const render = require(p.join(appDir, '.dist/reading/render.js')),
+	filters = require(p.join(appDir, '.dist/reading/filters.js')),
+	ai = require(p.join(appDir, '.dist/reading/ai.js')),
+	music = require(p.join(appDir, '.dist/reading/music.js')),
+	contextMenu = require(p.join(appDir, '.dist/reading/context-menu.js')),
+	pageTransitions = require(p.join(appDir, '.dist/reading/page-transitions.js')),
+	readingEbook = require(p.join(appDir, '.dist/reading/ebook.js')),
+	sidebar = require(p.join(appDir, '.dist/reading/sidebar.js')),
+	discord = require(p.join(appDir, '.dist/reading/discord.js')),
+	progress = require(p.join(appDir, '.dist/reading/progress.js')),
+	doublePage = require(p.join(appDir, '.dist/reading/double-page.js')),
+	view = require(p.join(appDir, '.dist/reading/view.mjs')).default,
+	panels = require(p.join(appDir, '.dist/reading/panels.mjs')).default,
+	animate = require(p.join(appDir, '.dist/animate.mjs')).default;
 
-var images = {}, imagesData = {}, imagesDataClip = {}, imagesPath = {}, imagesNum = 0, contentNum = 0, imagesNumLoad = 0, currentIndex = 1, imagesPosition = {}, imagesFullPosition = {}, foldersPosition = {}, indexNum = 0, imagesDistribution = [], currentPageXY = {x: 0, y: 0};
 
-//Calculates whether to add a blank image (If the reading is in double page and do not apply to the horizontals)
-function blankPage(index)
-{
-	var key = 0;
+var items = [], imagesData = {}, imagesDataClip = {}, imagesPath = {}, imagesNum = 0, contentNum = 0, imagesNumLoad = 0, currentIndex = 1, imagesDistribution = [], currentPageXY = {x: 0, y: 0}, currentMousePosition = {pageX: 0, pageY: 0}, currentPage = 0;
 
-	if(_config.readingDoublePage && !_config.readingWebtoon && _config.readingDoNotApplyToHorizontals)
-	{
-		for(let i = index; i < (imagesNum + 1); i++)
-		{
-			if(typeof imagesDataClip[i] !== 'undefined')
-			{
-				if(imagesDataClip[i].aspectRatio > 1)
-				{
-					return key % 2;
-				}
-				else
-				{
-					key++;
-				}
-			}
-			else
-			{
-				key++;
-			}
-		}
-	}
-}
-
-function calculateImagesDataWithClip()
-{
-	imagesDataClip = {};
-
-	let imageClip = _config.readingImageClip;
-	let clipVertical = (imageClip.top + imageClip.bottom) / 100;
-	let clipHorizontal = (imageClip.left + imageClip.right) / 100;
-
-	if(clipVertical === 0 && clipHorizontal === 0)
-		return imagesDataClip = imagesData;
-
-	for(let i = 1; i < (contentNum + 1); i++)
-	{
-		if(typeof imagesData[i] !== 'undefined')
-		{
-			let width = Math.round(imagesData[i].width * (1 - clipHorizontal));
-			let height = Math.round(imagesData[i].height * (1 - clipVertical));
-
-			imagesDataClip[i] = {
-				width: width,
-				height: height,
-				aspectRatio: (width / height),
-			};
-		}
-	}
-
-	return imagesDataClip;
-}
-
-//Calculates the distribution of the images depending on the user's configuration
-function calculateImagesDistribution()
-{
-	imagesDistribution = [];
-	indexNum = 0;
-
-	if(_config.readingDoublePage && !_config.readingWebtoon)
-	{
-		var data = [];
-
-		if(_config.readingBlankPage && (!_config.readingDoNotApplyToHorizontals || (typeof imagesDataClip[1] !== 'undefined' && imagesDataClip[1].aspectRatio <= 1)))
-			data.push({index: false, folder: false, blank: true, width: 2});
-
-		for(let i = 1; i < (contentNum + 1); i++)
-		{
-			if(typeof imagesDataClip[i] !== 'undefined')
-			{
-				if(_config.readingDoNotApplyToHorizontals && imagesDataClip[i].aspectRatio > 1)
-				{
-					if(data.length > 0)
-					{
-						data.push({index: false, folder: false, blank: true, width: 2});
-						imagesDistribution.push(data);
-						data = [];
-						indexNum++;
-					}
-
-					data.push({index: i, folder: false, blank: false, width: 1});
-					imagesDataClip[i].position = imagesData[i].position = indexNum;
-					imagesDistribution.push(data);
-					indexNum++;
-					data = [];
-				}
-				else
-				{
-					if(_config.readingDoNotApplyToHorizontals && data.length == 0 && blankPage(i))
-						data.push({index: false, folder: false, blank: true, width: 2});
-
-					data.push({index: i, folder: false, blank: false, width: 2});
-					imagesDataClip[i].position = imagesData[i].position = indexNum;
-				}
-			}
-			else
-			{
-				data.push({index: i, folder: true, blank: false, width: 2});
-				foldersPosition[i] = indexNum;
-			}
-
-			if(data.length > 1)
-			{
-				imagesDistribution.push(data);
-				data = [];
-				indexNum++;
-			}
-
-		}
-
-		if(data.length > 0)
-		{
-			if(data.length == 1 && data[0].width == 2)
-				data.push({index: false, folder: false, blank: true, width: 2});
-
-			imagesDistribution.push(data);
-			indexNum++;
-		}
-	}
-	else
-	{
-		for(let i = 1; i < (contentNum + 1); i++)
-		{
-			if(typeof imagesDataClip[i] !== 'undefined')
-			{
-				imagesDistribution.push([{index: i, folder: false, blank: false, width: 1}]);
-				imagesDataClip[i].position = imagesData[i].position = indexNum;
-				indexNum++;
-			}
-			else
-			{
-				imagesDistribution.push([{index: i, folder: true, blank: false, width: 1}]);
-				foldersPosition[i] = indexNum;
-				indexNum++;
-			}
-		}
-	}
-
-	if(_config.invisibleFirstBlankPage)
-	{
-		if(imagesDistribution[0])
-		{
-			for(let key2 in imagesDistribution[0])
-			{
-				if(imagesDistribution[0][key2].blank)
-					imagesDistribution[0].splice(key2, 1);
-			}		
-		}
-	}
-	else if(_config.invisibleBlankPages)
-	{
-		for(let key in imagesDistribution)
-		{
-			for(let key2 in imagesDistribution[key])
-			{
-				if(imagesDistribution[key][key2].blank)
-					imagesDistribution[key].splice(key2, 1);
-			}		
-		}
-	}
-}
-
-var currentComics = [];
+let currentComics = [];
 
 function setCurrentComics(comics)
 {
@@ -180,580 +28,430 @@ function setCurrentComics(comics)
 	}
 }
 
-function applyMangaReading(distribution)
+let prevChangeHeaderButtons = {};
+
+function changeHeaderButtons(scrollInStart = null, scrollInEnd = null)
 {
-	_distribution = JSON.parse(JSON.stringify(distribution));
+	let canGoPrev = true, canGoNext = true, prevIsPrevComic = false, nextIsNextComic = false;
 
-	if(_config.readingManga)
+	let barHeader = template._barHeader();
+
+	let lastPage = barHeader.querySelector('.button-last-page');
+	let next = barHeader.querySelector('.button-next');
+	let prev = barHeader.querySelector('.button-prev');
+	let firstPage = barHeader.querySelector('.button-first-page');
+
+	if((scrollInStart === null || scrollInStart) && currentIndex == 1 && !((readingViewIs('scroll') && (_config.readingViewAdjustToWidth || _config.readingWebtoon)) && currentPageVisibility > 0))
 	{
-		if(!readingViewIs('scroll'))
-			_distribution.reverse();
-
-		for(let i = 0, len = _distribution.length; i < len; i++)
+		if(readingManga())
 		{
-			_distribution[i].reverse();
-		}
-	}
-
-	return _distribution;
-}
-
-// Add images distribution to html
-function addHtmlImages()
-{
-	calculateImagesDataWithClip();
-	calculateImagesDistribution();
-
-	var _imagesDistribution = applyMangaReading(imagesDistribution);
-
-	var folderImages = [];
-
-	for(let key1 in _imagesDistribution)
-	{
-		var distribution = [];
-
-		for(let key2 in _imagesDistribution[key1])
-		{
-			var image = _imagesDistribution[key1][key2];
-
-			image.key1 = key1;
-			image.key2 = key2;
-
-			if(!image.folder && !image.blank)
-			{
-				image.name = currentComics[image.index].name;
-				image.path = currentComics[image.index].path;
-				image.image = currentComics[image.index].image;
-			}
-			else if(image.folder)
-			{
-				image.name = currentComics[image.index].name;
-				image.path = currentComics[image.index].path;
-				image.image = currentComics[image.index].image;
-				image.mainPath = currentComics[image.index].mainPath;
-				image.fristImage = currentComics[image.index].fristImage;
-			}
-
-			if(readingIsCanvas)
-				image.canvas = true;
-
-			distribution.push(image);
-		}
-
-		folderImages.push({key1: key1, distribution: distribution});
-	}
-
-	handlebarsContext.folderImages = folderImages;
-
-	var html = template.load('reading.content.right.images.html');
-
-	template.contentRight('.loading').remove();
-	template.contentRight('.reading-body > div').html(html);
-	template.contentRight('.reading-lens > div > div').html(html);
-
-}
-
-//Calculates the size and position of the images
-function calcAspectRatio(first, second)
-{
-	if(!first)
-		return false;
-
-	if(second)
-	{
-		if(first.folder)
-			first.aspectRatio = 1;
-		else if(first.blank)
-			first.aspectRatio = second.folder ? 1 : imagesDataClip[second.index].aspectRatio;
-		else
-			first.aspectRatio = imagesDataClip[first.index].aspectRatio;
-	}
-	else
-	{
-		if(first.folder)
-			first.aspectRatio = 1;
-		else
-			first.aspectRatio = imagesDataClip[first.index].aspectRatio;
-	}
-
-	return first;
-}
-
-function disposeImages(data = false)
-{
-	var margin = (data && typeof data.margin !== 'undefined') ? data.margin : _config.readingMargin.margin;
-	var marginHorizontal = (data && typeof data.left !== 'undefined') ? data.left : _config.readingMargin.left;
-	var marginVertical = (data && typeof data.top !== 'undefined') ? data.top : _config.readingMargin.top;
-	var marginHorizontalsHorizontal = (data && typeof data.horizontalsLeft !== 'undefined') ? data.horizontalsLeft : _config.readingHorizontalsMargin.left;
-	//var marginHorizontalsVertical = (data && typeof data.horizontalsTop !== 'undefined') ? data.horizontalsTop : _config.readingHorizontalsMargin.top;
-
-	var contentHeight = template.contentRight().children('div').height();
-
-	if(readingViewIs('scroll'))
-		var contentWidth = template.contentRight('.reading-body').width();
-	else
-		var contentWidth = template.contentRight().width();
-
-	//Width 0
-	var contentWidth0 = contentWidth - (marginHorizontal * 2);
-	var aspectRatio0 = contentWidth0 / (contentHeight - marginVertical * 2);
-
-	//Width horizontals 0
-	var contentWidthHorizontals0 = contentWidth - (marginHorizontalsHorizontal * 2);
-	var aspectRatioHorizontals0 = contentWidthHorizontals0 / (contentHeight - marginVertical * 2);
-
-	var _imagesDistribution = applyMangaReading(imagesDistribution);
-
-	let imageClip = _config.readingImageClip;
-
-	let clipTop = imageClip.top / 100;
-	let clipBottom = imageClip.bottom / 100;
-	let clipVertical = clipTop + clipBottom;
-	let clipLeft = imageClip.left / 100;
-	let clipRight = imageClip.right / 100;
-	let clipHorizontal = clipLeft + clipRight;
-
-	let allImages = template.contentRight('.r-img').get();
-
-	let imageElements = {};
-
-	for(let i = 0, len = allImages.length; i < len; i++)
-	{
-		let image = allImages[i];
-
-		let key1 = +image.dataset.key1;
-		let key2 = +image.dataset.key2;
-
-		if(!imageElements[key1]) imageElements[key1] = {};
-		if(!imageElements[key1][key2]) imageElements[key1][key2] = [];
-
-		imageElements[key1][key2].push(image.firstElementChild);
-	}
-
-	for(let key1 in _imagesDistribution)
-	{
-		if(!imageElements[key1])
-			continue;
-
-		let image0 = imageElements[key1][0] || false;
-		let image1 = imageElements[key1][1] || false;
-
-		let first = _imagesDistribution[key1][0];
-		let second = _imagesDistribution[key1][1];
-
-		first = calcAspectRatio(first, second);
-		second = calcAspectRatio(second, first);
-
-		if(second)
-		{
-			var imageHeight0, imageWidth0, marginLeft0, marginTop0, imageHeight1, imageWidth1, marginLeft1, marginTop1;
-
-			var imageHeight = imageHeight0 = imageHeight1 = (contentHeight - marginVertical * 2);
-
-			imageWidth0 = imageHeight0 * first.aspectRatio;
-			imageWidth1 = imageHeight1 * second.aspectRatio;
-
-			var joinWidth = imageWidth0 + imageWidth1 + marginHorizontal;
-
-			if(joinWidth < contentWidth0 && !(readingViewIs('scroll') && (_config.readingViewAdjustToWidth || _config.readingWebtoon)))
-			{
-				marginLeft0 = contentWidth / 2 - (imageWidth0 + imageWidth1 + marginHorizontal) / 2;
-				marginLeft1 = marginHorizontal;
-				marginTop0 = marginTop1 = marginVertical;
-			}
-			else
-			{
-				imageWidth0 = (first.aspectRatio / (first.aspectRatio + second.aspectRatio)) * (contentWidth0 - marginHorizontal);
-				imageWidth1 = (second.aspectRatio / (second.aspectRatio + first.aspectRatio)) * (contentWidth0 - marginHorizontal);
-
-				var imageHeight = imageHeight0 = imageHeight1 = imageWidth0 / first.aspectRatio;
-
-				marginLeft0 = marginLeft1 = marginHorizontal;
-				marginTop0 = marginTop1 = contentHeight / 2 - imageHeight / 2;
-			}
-
-			if(readingViewIs('scroll'))
-				marginTop0 = marginTop1 = marginVertical;
-
-			let imgHeight0 = (clipVertical > 0 ? (imageHeight0 / (1 - clipVertical)) : imageHeight0);
-			let imgWidth0 = (clipHorizontal > 0 ? (imageWidth0 / (1 - clipHorizontal)) : imageWidth0);
-
-			if(image0)
-			{
-				for(let i = 0, len = image0.length; i < len; i++)
-				{
-					let image = image0[i];
-
-					image.style.height = imageHeight0+'px';
-					image.style.width = imageWidth0+'px';
-					image.style.marginLeft = marginLeft0+'px';
-					image.style.marginTop = marginTop0+'px';
-					image.style.marginBottom = ((readingViewIs('scroll') && ((+key1) + 1) == indexNum) ? marginVertical : 0)+'px';
-					image.style.marginRight = '0px';
-
-					image.dataset.height = imgHeight0;
-					image.dataset.width = imgWidth0;
-
-					let img = image.firstElementChild;
-
-					if(img)
-					{
-						img.style.marginTop = -(imgHeight0 * clipTop)+'px';
-						img.style.marginLeft = -(imgWidth0 * clipLeft)+'px';
-
-						//if(img.tagName == 'IMG')
-						//{
-							img.style.height = imgHeight0+'px';
-							img.style.width = imgWidth0+'px';
-						//}
-					}
-				}
-			}
-
-			let imgHeight1 = (clipVertical > 0 ? (imageHeight1 / (1 - clipVertical)) : imageHeight1);
-			let imgWidth1 = (clipHorizontal > 0 ? (imageWidth1 / (1 - clipHorizontal)) : imageWidth1);
-
-			if(image1)
-			{
-				for(let i = 0, len = image1.length; i < len; i++)
-				{
-					let image = image1[i];
-
-					image.style.height = imageHeight1+'px';
-					image.style.width = imageWidth1+'px';
-					image.style.marginLeft = marginLeft1+'px';
-					image.style.marginTop = marginTop1+'px';
-					image.style.marginBottom = ((readingViewIs('scroll') && ((+key1) + 1) == indexNum) ? marginVertical : 0)+'px';
-					image.style.marginRight = '0px';
-
-					image.dataset.height = imgHeight1;
-					image.dataset.width = imgWidth1;
-
-					let img = image.firstElementChild;
-
-					if(img)
-					{
-						img.style.marginTop = -(imgHeight1 * clipTop)+'px';
-						img.style.marginLeft = -(imgWidth1 * clipLeft)+'px';
-
-						//if(img.tagName == 'IMG')
-						//{
-							img.style.height = imgHeight1+'px';
-							img.style.width = imgWidth1+'px';
-						//}
-					}
-				}
-			}
+			prevIsPrevComic = true;
+			canGoPrev = dom.nextComic();
 		}
 		else
 		{
-			if(_config.readingHorizontalsMarginActive && first.aspectRatio > 1)
-			{
-				if(aspectRatioHorizontals0 > first.aspectRatio && !(readingViewIs('scroll') && (_config.readingViewAdjustToWidth || _config.readingWebtoon)))
-				{
-					var imageHeight = (contentHeight - marginVertical * 2);
-					var imageWidth = imageHeight * first.aspectRatio;
-					var marginLeft = contentWidth / 2 - imageWidth / 2;
-					var marginTop = marginVertical;
-				}
-				else
-				{
-					var imageWidth = (contentWidth - marginHorizontalsHorizontal * 2);
-					var imageHeight = imageWidth / first.aspectRatio;
-					var marginLeft = marginHorizontalsHorizontal;
-					var marginTop = contentHeight / 2 - imageHeight / 2;
-				}
-			}
-			else
-			{
-				if(aspectRatio0 > first.aspectRatio && !(readingViewIs('scroll') && (_config.readingViewAdjustToWidth || _config.readingWebtoon)))
-				{
-					var imageHeight = (contentHeight - marginVertical * 2);
-					var imageWidth = imageHeight * first.aspectRatio;
-					var marginLeft = contentWidth / 2 - imageWidth / 2;
-					var marginTop = marginVertical;
-				}
-				else
-				{
-					var imageWidth = (contentWidth - marginHorizontal * 2);
-					var imageHeight = imageWidth / first.aspectRatio;
-					var marginLeft = marginHorizontal;
-					var marginTop = contentHeight / 2 - imageHeight / 2;
-				}
-			}
-
-			if(readingViewIs('scroll'))
-				marginTop = marginVertical;
-
-			let imgHeight = (clipVertical > 0 ? (imageHeight / (1 - clipVertical)) : imageHeight);
-			let imgWidth = (clipHorizontal > 0 ? (imageWidth / (1 - clipHorizontal)) : imageWidth);
-
-			if(image0)
-			{
-				for(let i = 0, len = image0.length; i < len; i++)
-				{
-					let image = image0[i];
-
-					image.style.height = imageHeight+'px';
-					image.style.width = imageWidth+'px';
-					image.style.marginLeft = marginLeft+'px';
-					image.style.marginTop = marginTop+'px';
-					image.style.marginBottom = ((readingViewIs('scroll') && ((+key1) + 1) == indexNum) ? marginVertical : 0)+'px';
-					image.style.marginRight = '0px';
-
-					image.dataset.height = imgHeight;
-					image.dataset.width = imgWidth;
-
-					let img = image.firstElementChild;
-
-					if(img)
-					{
-						img.style.marginTop = -(imgHeight * clipTop)+'px';
-						img.style.marginLeft = -(imgWidth * clipLeft)+'px';
-
-						//if(img.tagName == 'IMG')
-						//{
-							img.style.height = imgHeight+'px';
-							img.style.width = imgWidth+'px';
-						//}
-					}
-				}
-			}
+			prevIsPrevComic = true;
+			canGoPrev = dom.previousComic();
 		}
 	}
 
-	let rFlex = template.contentRight('.r-flex').get();
-
-	for(let i = 0, len = rFlex.length; i < len; i++)
+	if((scrollInEnd === null || scrollInEnd) && currentIndex == view.distribution.total && !((readingViewIs('scroll') && (_config.readingViewAdjustToWidth || _config.readingWebtoon)) && currentPageVisibility < maxPageVisibility))
 	{
-		rFlex[i].style.width = contentWidth+'px';
-		rFlex[i].style.height = !readingViewIs('scroll') ? contentHeight+'px' : '';
+		if(readingManga())
+		{
+			nextIsNextComic = true;
+			canGoNext = dom.previousComic();
+		}
+		else
+		{
+			nextIsNextComic = true;
+			canGoNext = dom.nextComic();
+		}
 	}
-}
 
-var rightSize = {}; // Right content size
-
-function calculateView()
-{
-	let contentRight = template.contentRight().get(0);
-
-	let content = contentRight.firstElementChild;
-	let rect = content.getBoundingClientRect();
-
-	rightSize = {
-		height: rect.height,
-		width: rect.width,
-		top: rect.top,
-		left: rect.left,
-		// readingRect: content.querySelector('.reading-body').getBoundingClientRect(),
-		scrollHeight: content.scrollHeight,
+	let currentChangeHeaderButtons = {
+		prevIsPrevComic: prevIsPrevComic,
+		nextIsNextComic: nextIsNextComic,
+		canGoPrev: canGoPrev,
+		canGoNext: canGoNext,
+		readingManga: readingManga(),
 	};
 
-	if(readingViewIs('slide'))
+	if(!isEqual(prevChangeHeaderButtons, currentChangeHeaderButtons))
 	{
-		dom.this(contentRight).find('.reading-body > div, .reading-lens > div > div', true).css({
-			width: (rect.width * indexNum)+'px',
-			height: rect.height,
-			flexDirection: '',
-		});
-	}
-	else if(readingViewIs('scroll'))
-	{
-		dom.this(contentRight).find('.reading-body > div').css({
-			width: '100%',
-			flexDirection: 'column',
-		});
+		dom.this([prev, firstPage]).class(!canGoPrev, 'disable-pointer');
+		dom.this([next, lastPage]).class(!canGoNext, 'disable-pointer');
 
-		dom.this(contentRight).find('.reading-lens > div > div').css({
-			width: rect.width+'px',
-			flexDirection: 'column',
-		});
-	}
+		firstPage.innerHTML = prevIsPrevComic ? 'skip_previous' : 'first_page';
+		lastPage.innerHTML = nextIsNextComic ? 'skip_next' : 'last_page';
 
-	if(readingViewIs('scroll'))
-	{
-		imagesPosition = [];
-		imagesFullPosition = [];
+		prev.setAttribute('hover-text', readingManga() ? language.reading.next : language.reading.previous);
+		next.setAttribute('hover-text', readingManga() ? language.reading.previous : language.reading.next);
+		firstPage.setAttribute('hover-text', readingManga() ? (prevIsPrevComic ? language.reading.nextChapter : language.reading.lastPage) : (prevIsPrevComic ? language.reading.prevChapter : language.reading.firstPage));
+		lastPage.setAttribute('hover-text', readingManga() ? (nextIsNextComic ? language.reading.prevChapter : language.reading.firstPage) : (nextIsNextComic ? language.reading.nextChapter : language.reading.lastPage));
 
-		let scrollTop = content.scrollTop - rect.top;
-
-		for(let key1 in imagesDistribution)
+		if(config.readingTrackingAtTheEnd && !trackingCurrent && ((readingManga() && prevIsPrevComic) || (!readingManga() && nextIsNextComic)))
 		{
-			if(typeof imagesPosition[key1] === 'undefined') imagesPosition[key1] = [];
-			if(typeof imagesFullPosition[key1] === 'undefined') imagesFullPosition[key1] = [];
-
-			for(let key2 in imagesDistribution[key1])
-			{
-				let image = contentRight.querySelector('.image-position'+key1+'-'+key2);
-				let top = 0, height = 0;
-
-				if(image)
-				{
-					let rect = image.getBoundingClientRect();
-					let scale = config.readingGlobalZoom ? scalePrevData.scale : 1;
-
-					top = rect.top + (_config.readingMargin.top * scale);
-					height = rect.height - (_config.readingMargin.top * scale);
-				}
-
-				imagesPosition[key1][key2] = (top + (height / 2)) + scrollTop;
-				imagesFullPosition[key1][key2] = {
-					top: top + scrollTop,
-					center: imagesPosition[key1][key2],
-					bottom: top + height + scrollTop,
-				};
-			}
+			trackingCurrent = true;
+			tracking.track();
 		}
-	}
-}
 
-var previousScrollTop = 0, previousContentHeight = 0;
-
-function stayInLine()
-{
-	if(readingViewIs('slide') || (readingViewIs('scroll') && !_config.readingViewAdjustToWidth && !_config.readingWebtoon))
-	{
-		if(currentIndex < 1)
-			showPreviousComic(1, false);
-		else if(currentIndex > contentNum)
-			showNextComic(1, false);
-		else
-			goToIndex(currentIndex, false, currentPageVisibility);
-	}
-	else if(readingViewIs('scroll'))
-	{
-		if(currentIndex < 1)
-			showPreviousComic(1, false);
-		else if(currentIndex > contentNum)
-			showNextComic(1, false);
-		else
-			goToIndex(currentIndex, false, currentPageVisibility);
+		prevChangeHeaderButtons = currentChangeHeaderButtons;
 	}
 }
 
 //Go to a specific comic image (Left menu)
-function goToImageCL(index, animation = true)
+function goToImageCL(index, animation = true, fromScroll = false, onlyMoveScroll = false)
 {
-	readingRender.focusIndex(index);
+	if(!onReading) return;
 
-	var animationDurationMS = ((animation) ? _config.readingViewSpeed : 0) * 1000;
-
-	var leftScroll = template.contentLeft('.r-l-i'+index).parent();
-	var leftImg = template.contentLeft('.r-l-i'+index);
-
-	template.contentLeft('.reading-left').removeClass('s');
-	leftImg.addClass('s');
-
-	var scrollTop = (((leftImg.offset().top + leftScroll.scrollTop()) - leftScroll.offset().top) + (leftImg.outerHeight() / 2)) - (leftScroll.height() / 2);
-
-	if(scrollTop > 0 && scrollTop < (leftScroll[0].scrollHeight - leftScroll.height()))
+	if(!onlyMoveScroll)
 	{
-		leftScroll.stop(true).animate({scrollTop: scrollTop+'px'}, animationDurationMS);
+		render.focusIndex(index, doublePage.active());
+		filters.focusIndex(index);
+		music.focusIndex();
+		panels.focusPage(index, fromScroll); // Use index as page
+		shortcuts.calcEventFromPoint(false);
 	}
-	else if(scrollTop > 0)
+
+	let animationDurationMS = ((animation) ? _config.readingViewSpeed : 0) * 1000;
+	let contentLeft = template._contentLeft();
+
+	let leftScroll = contentLeft.firstElementChild;
+	let leftItem;
+
+	const _animation = animation && _config.readingViewSpeed > 0.2;
+
+	if(readingIsEbook)
 	{
-		leftScroll.stop(true).animate({scrollTop: (leftScroll[0].scrollHeight - leftScroll.height())+'px'}, animationDurationMS);
+		let currentPage = index;
+		let closest = 0;
+
+		for(let i = 0, len = _ebook.tocPages.length; i < len; i++)
+		{
+			if(_ebook.tocPages[i] <= index && _ebook.tocPages[i] > closest)
+				closest = _ebook.tocPages[i];
+		}
+
+		leftItem = contentLeft.querySelector('.reading-toc-page-'+closest+' .reading-toc-title');
+		const titles = dom.this(contentLeft).find('.reading-toc-title.s', true);
+
+		if(_animation)
+			titles.removeClass('s');
+		else
+			titles.removeClass('s', 'transition');
+
+		if(leftItem)
+		{
+			leftItem.classList.add('s');
+			if(_animation) leftItem.classList.add('transition');
+		}
 	}
 	else
 	{
-		leftScroll.stop(true).animate({scrollTop: 0+'px'}, animationDurationMS);
+		leftItem = contentLeft.querySelector('.r-l-i'+index);
+		const titles = dom.this(contentLeft).find('.reading-left.s', true);
+
+		if(_animation)
+			titles.removeClass('s');
+		else
+			titles.removeClass('s', 'transition');
+
+		if(leftItem)
+		{
+			leftItem.classList.add('s');
+			if(_animation) leftItem.classList.add('transition');
+		}
 	}
+
+	if(leftItem)
+	{
+		let scrollTop = 0;
+		let scrollHeight = 0;
+		const leftSize = view.leftSize(false);
+		const currentScrollTop = sidebar.getScrollTop();
+
+		if(readingIsEbook)
+		{
+			const rectItem = leftItem.getBoundingClientRect();
+
+			scrollTop = (((rectItem.top + currentScrollTop) - leftSize.top) + (rectItem.height / 2)) - (leftSize.height / 2);
+			scrollHeight = leftScroll.scrollHeight;
+		}
+		else
+		{
+			const position = sidebar.getPosition(leftItem.dataset.page);
+
+			scrollTop = (position.top + (position.height / 2)) - (leftSize.height / 2);
+			scrollHeight = sidebar.scrollHeight;
+		}
+
+		const maxScrollTop = scrollHeight - leftSize.height;
+		const targetScrollTop = Math.max(0, Math.min(scrollTop, maxScrollTop));
+
+		if(currentScrollTop !== targetScrollTop)
+			sidebar.setScrollTop(targetScrollTop, (animation ? animationDurationMS : false));
+
+		sidebar.disableEvent(animationDurationMS + 50);
+	}
+
+	if(!onlyMoveScroll)
+	{
+		let input = contentLeft.querySelector('.simple-slider input');
+		if(input) events.goRange(input, index, false);
+
+		currentPage = index;
+		reading.discord.updateThrottle();
+
+		dom.this(template._contentRight()).find('.reading-progress').class(isFullScreen ? config.readingShowPageNumberFullScreen : config.readingShowPageNumber, 'active').find('textPath', true).html(reading.currentPage()+' / '+reading.totalPages());
+
+		tracking.trackImage();
+	}
+
+	const readingLeft = contentLeft.querySelector('.reading-left-images');
+	if(readingLeft) readingLeft.style.opacity = 1;
+
+	sidebar.goToImage(index);
+
+	// Change header buttons
+	if(!onlyMoveScroll && (!readingViewIs('scroll') || !fromScroll))
+		changeHeaderButtons();
 }
 
 //Go to a specific comic image
-function goToImage(imageIndex, bookmarks = false)
+function goToImage(imageIndex, disableSave = false)
 {
-	if(typeof imagesData[imageIndex] !== 'undefined')
-	{
-		if(!bookmarks)
-			saveReadingProgressA = true;
-
-		readingDirection = true;
-
-		var newIndex = imagesData[imageIndex].position + 1;
-
-		if(_config.readingManga && !readingViewIs('scroll'))
-			newIndex = (indexNum - newIndex) + 1;
-
-		goToIndex(newIndex);
-		goToImageCL(imageIndex, true)
-	}
+	goToPage(imageIndex, disableSave);
 }
 
 //Go to a specific comic folder
 function goToFolder(folderIndex)
 {
-	if(typeof foldersPosition[folderIndex] !== 'undefined')
+	goToPage(folderIndex);
+}
+
+function openFolder()
+{
+	if(!onReading) return;
+
+	const distribution = reading.view.distribution.currentDistribution[reading.currentImagePosition()];
+
+	for(const item of distribution)
 	{
-		readingDirection = true;
+		if(item.folder)
+		{
+			reading.progress.save();
+			dom.openComic(true, item.fristImage, item.mainPath)
 
-		var newIndex = foldersPosition[folderIndex] + 1;
+			break;
+		}
+	}
+}
 
-		if(_config.readingManga && !readingViewIs('scroll'))
-			newIndex = (indexNum - newIndex) + 1;
+//Go to a specific page
+function goToPage(page, disableSave = false)
+{
+	const item = items.find(item => item.index == page);
+	if(!item) return;
 
-		goToIndex(newIndex);
-		goToImageCL(folderIndex, true)
+	readingDirection = true;
+
+	let newIndex = item.position + 1;
+
+	if(readingManga())
+		newIndex = (view.distribution.total - newIndex) + 1;
+
+	calculateRealReadingDirection(newIndex);
+
+	goToIndex(newIndex);
+	goToImageCL(page, true)
+}
+
+async function goToEbookId({id, href, kindle} = {})
+{
+	const page = await _ebook.getPage({id, href, kindle});
+
+	if(page)
+		return goToPage(page);
+}
+
+var pageRangeHistory = [];
+
+function pageRange(page, end)
+{
+	if(!end)
+	{
+		goToImageCL(page, false, false, true);
+	}
+	else
+	{
+		template._contentLeft().querySelector('.range input').blur();
+		template._contentLeft().querySelector('.slider-reset').classList.add('active');
+		pageRangeHistory.push(currentIndex);
+		reading.goToPage(page);
+	}
+}
+
+function goBackPageRangeHistory()
+{
+	let page = pageRangeHistory.pop();
+	reading.goToPage(page);
+
+	if(pageRangeHistory.length == 0)
+		template._contentLeft().querySelector('.slider-reset').classList.remove('active');
+}
+
+function goPageDialog(go = false)
+{
+	if(go)
+	{
+		let input = document.querySelector('.input-goto-page');
+		reading.goToPage(input.value);
+	}
+	else
+	{
+		handlebarsContext.currentIndex = currentIndex;
+
+		events.dialog({
+			header: language.dialog.pages.readingGotoPage,
+			width: 400,
+			height: false,
+			content: template.load('dialog.pages.reading.goto.page.html'),
+			buttons: [
+				{
+					text: language.buttons.cancel,
+					function: 'events.closeDialog();',
+				},
+				{
+					text: language.menu.goto.main,
+					function: 'events.closeDialog(); reading.goPageDialog(true);',
+				}
+			],
+		});
+
+		events.focus('.input-goto-page');
+		events.eventInput();
 	}
 }
 
 //Returns the highest image
 function returnLargerImage(index)
 {
-	if(_config.readingDoublePage && !_config.readingWebtoon)
-	{
-		var imageHeight0 = template.contentRight('.image-position'+(index)+'-0').height();
-		var imageHeight1 = template.contentRight('.image-position'+(index)+'-1').height();
+	const positions = view.imagesFullPosition?.[index] ?? [];
+	const items = view.distribution?.currentDistribution?.[index] ?? [];
 
-		if(imageHeight1 === undefined || imageHeight0 >= imageHeight1)
-		{
-			var image = template.contentRight('.image-position'+(index)+'-0');
-		}
-		else
-		{
-			var image = template.contentRight('.image-position'+(index)+'-1');
-		}
-	}
-	else
-	{
-		var image = template.contentRight('.image-position'+(index)+'-0');
-	}
+	const position0 = positions[0];
+	const position1 = doublePage.active() ? positions[1] : undefined;
+	const item0 = items[0];
+	const item1 = items[1];
 
-	return image;
+	const getHeight = function(position, item) {
+
+		if(!position) return 0;
+
+		const rendered = item?.rendered;
+		const scale = position.original.height
+			? position.height / position.original.height
+			: (readingGlobalZoom() ? reading.scalePrevData().scale : 1);
+
+		return position.height + ((rendered?.top ?? 0) + (rendered?.bottom ?? 0)) * scale;
+
+	};
+
+	const height0 = getHeight(position0, item0);
+	const height1 = getHeight(position1, item1);
+	const useImage1 = height0 < height1;
+	const position = useImage1 ? position1 : position0;
+	const item = items[useImage1 ? 1 : 0];
+
+	const result = {
+		image: item?.element ?? null,
+		height: useImage1 ? height1 : height0,
+		top: position?.top ?? 0,
+	};
+
+	return result;
 }
 
-var currentPageVisibility = 0, maxPageVisibility = 0, currentPageStart = true, readingDirection = true, disableOnScrollST = false;
+var currentPageVisibility = 0, maxPageVisibility = 0, currentPageStart = true, readingDirection = true, realReadingDirection = true, disableOnScrollST = false;
+
+function calculateRealReadingDirection(index)
+{
+	if(currentIndex > index)
+		realReadingDirection = false;
+	else
+		realReadingDirection = true;
+}
+
+var goScrollPercentST = false;
+
+function goScrollPercent(screenPercent = 50, animation = true)
+{
+	if(_config.readingWebtoon || readingViewIs('scroll'))
+	{
+		let animationDurationMS = (animation ? _config.readingViewSpeed : 0) * 1000;
+
+		const content = template._contentRight().firstElementChild;
+		const rect = getViewportRect();
+
+		const now = Date.now();
+		const prevNow = +content.dataset.now;
+
+		const scrollHeight = content.scrollHeight - rect.height;
+		let scrollTop = (+content.dataset.scrollTop || content.scrollTop) + (screenPercent / 100 * rect.height);
+
+		if(scrollTop < 0)
+			scrollTop = 0;
+		else if(scrollTop > scrollHeight)
+			scrollTop = scrollHeight;
+
+		content.dataset.scrollTop = scrollTop;
+		content.dataset.now = now;
+
+		clearTimeout(goScrollPercentST);
+		goScrollPercentST = setTimeout(function(){
+
+			content.dataset.scrollTop = '';
+			content.dataset.now = '';
+
+		}, animationDurationMS);
+
+		$(content).stop(true).animate({scrollTop: scrollTop+'px'}, animationDurationMS, ((now - prevNow) < animationDurationMS ? 'linear' : 'swing'));
+	}
+}
 
 //Go to a specific comic index
 function goToIndex(index, animation = true, nextPrevious = false, end = false)
 {
-	var animationDurationS = ((animation) ? _config.readingViewSpeed : 0);
-	var animationDurationMS = animationDurationS * 1000;
+	let animationDurationS = ((animation) ? _config.readingViewSpeed : 0);
+	let animationDurationMS = animationDurationS * 1000;
 
-	if(currentScale != 1 && animation && !(config.readingGlobalZoom && readingViewIs('scroll')))
-		reading.resetZoom();
+	let _currentScale = currentScale;
 
-	var content = template.contentRight().children('div');
-	var contentWidth = content.width();
-	var contentHeight = content.height();
+	// This is necesary to avoid prev page to overlap the view
+	if(currentScale != 1 && animation && !(readingGlobalZoom() && readingViewIs('scroll')))
+		reading.resetZoom(true, true, true, (readingGlobalZoomSlide() && !readingViewIs('scroll')));
 
-	var updateCurrentIndex = true;
+	const content = template._contentRight().firstElementChild;
+	const viewSize = view.viewSize();
+	const {width: contentWidth, height: contentHeight} = viewSize;
 
-	var eIndex = index;
+	let updateCurrentIndex = true;
 
-	var pageVisibilityIndex = 0;
+	let eIndex = index;
 
-	var imgHeight = false;
+	let pageVisibilityIndex = 0;
+
+	let imgHeight = false;
 
 	if(((nextPrevious && currentPageStart) || !nextPrevious || end) && (readingViewIs('scroll') && (_config.readingViewAdjustToWidth || _config.readingWebtoon)))
 	{
-		image = returnLargerImage(eIndex-1);
-
-		imgHeight = image.height() + _config.readingMargin.top;
+		let largerImage = returnLargerImage(eIndex-1);
+		imgHeight = largerImage.height + readingMargin().top;
 
 		if(imgHeight > contentHeight)
 		{
-			var pageVisibility = Math.floor(imgHeight / contentHeight)
+			let pageVisibility = Math.floor(imgHeight / contentHeight)
 
 			maxPageVisibility = pageVisibility;
 
@@ -765,6 +463,7 @@ function goToIndex(index, animation = true, nextPrevious = false, end = false)
 		else
 		{
 			currentPageVisibility = 0;
+			maxPageVisibility = 0;
 		}
 
 		if(nextPrevious !== false && nextPrevious !== true) currentPageVisibility = nextPrevious;
@@ -776,9 +475,8 @@ function goToIndex(index, animation = true, nextPrevious = false, end = false)
 	{
 		eIndex = currentIndex;
 
-		image = returnLargerImage(eIndex-1);
-
-		imgHeight = image.height() + _config.readingMargin.top;
+		let largerImage = returnLargerImage(eIndex-1);
+		imgHeight = largerImage.height + readingMargin().top;
 
 		if(readingDirection)
 			currentPageVisibility++;
@@ -788,7 +486,7 @@ function goToIndex(index, animation = true, nextPrevious = false, end = false)
 		if(nextPrevious !== false && nextPrevious !== true) currentPageVisibility = nextPrevious;
 		pageVisibilityIndex = currentPageVisibility;
 
-		var pageVisibility = Math.floor(imgHeight / contentHeight);
+		let pageVisibility = Math.floor(imgHeight / contentHeight);
 
 		maxPageVisibility = pageVisibility;
 
@@ -800,9 +498,8 @@ function goToIndex(index, animation = true, nextPrevious = false, end = false)
 		{
 			eIndex = index;
 
-			image = returnLargerImage(eIndex-1);
-
-			imgHeight = image.height() + _config.readingMargin.top;
+			let largerImage = returnLargerImage(eIndex-1);
+			imgHeight = largerImage.height + readingMargin().top;
 
 			if(imgHeight > contentHeight)
 			{
@@ -828,32 +525,35 @@ function goToIndex(index, animation = true, nextPrevious = false, end = false)
 		currentPageStart = true;
 	}
 
-	if(readingViewIs('slide'))
+	if(readingViewIs('compact'))
+	{
+		pageTransitions.goToIndex(eIndex, animation);
+	}
+	else if(readingViewIs('slide'))
 	{
 		template.contentRight('.reading-body > div, .reading-lens > div > div').css({
-			'transition': animationDurationS+'s',
+			'transition': 'transform '+animationDurationS+'s',
 			'transform': 'translate(-'+(contentWidth * (eIndex - 1))+'px, 0)',
 		});
 	}
 	else if(readingViewIs('scroll'))
 	{
-		var image = returnLargerImage(eIndex-1);
+		let largerImage = returnLargerImage(eIndex-1);
+		let scrollTop = largerImage.top;
 
-		var scrollTop = (image.offset().top - content.offset().top) + content.scrollTop();
+		let scrollSum = 0;
 
-		var scrollSum = 0;
-
-		if((readingViewIs('scroll') && (_config.readingViewAdjustToWidth || _config.readingWebtoon)) && pageVisibilityIndex !== false)
+		if((_config.readingViewAdjustToWidth || _config.readingWebtoon) && pageVisibilityIndex !== false)
 		{
-			imgHeight = image.height() + _config.readingMargin.top;
+			imgHeight = largerImage.height + readingMargin().top;
 
 			if(imgHeight > contentHeight)
 			{
-				var pageVisibility = Math.floor(imgHeight / contentHeight);
+				let pageVisibility = Math.floor(imgHeight / contentHeight);
 
 				maxPageVisibility = pageVisibility;
 
-				var contentHeightRes = ((contentHeight * pageVisibility) - imgHeight) / pageVisibility;
+				let contentHeightRes = ((contentHeight * pageVisibility) - imgHeight) / pageVisibility;
 
 				scrollSum = ((contentHeight - contentHeightRes) - contentHeight / pageVisibility) * pageVisibilityIndex;
 			}		
@@ -869,13 +569,29 @@ function goToIndex(index, animation = true, nextPrevious = false, end = false)
 
 		}, animationDurationMS + 200); // Add 200 of margin to avoid errors
 
-		content.stop(true).animate({scrollTop: (scrollTop + scrollSum)+'px'}, animationDurationMS);
+		const targetScrollTop = scrollTop + scrollSum;
+
+		if(!restoringTabState || !restoringTabState.restoreScrollTop)
+		{
+			if(animationDurationMS > 0)
+			{
+				$(content).stop(true).animate({scrollTop: targetScrollTop+'px'}, animationDurationMS);
+			}
+			else
+			{
+				$(content).stop(true);
+				content.scrollTop = targetScrollTop;
+			}
+		}
 	}
 
-	var newIndex = (eIndex - 1);
+	let newIndex = (eIndex - 1);
 
-	if(_config.readingManga && !readingViewIs('scroll'))
-		newIndex = (indexNum - newIndex) - 1;
+	if(readingManga())
+		newIndex = (view.distribution.total - newIndex) - 1;
+
+	if(updateCurrentIndex)
+		currentIndex = index;
 
 	eachImagesDistribution(newIndex, ['image', 'folder'], function(image){
 
@@ -883,114 +599,422 @@ function goToIndex(index, animation = true, nextPrevious = false, end = false)
 
 	}, false, false, true);
 
-	//goToImageCL(imagesDistribution[eIndex-1][0].index, animation);
+	if(_currentScale && _currentScale != 1 && readingGlobalZoomSlide() && !readingViewIs('scroll'))
+	{
+		currentZoomIndex = false;
+		currentScale = _currentScale;
+		reading.applyScale(false, _currentScale, true, _currentScale > 1 ? false : true);
 
-	if(updateCurrentIndex)
-		currentIndex = index;
+		if(animation)
+		{
+			const offset = !readingManga() ? 99999 : -99999;
+
+			if(config.readingMoveZoomWithMouse)
+				applyMoveZoomWithMouse();
+			else
+				zoomMove(0, readingDirection ? offset : -offset);
+		}
+	}
+
+	//goToImageCL(imagesDistribution[eIndex-1][0].index, animation);
 
 	var isBookmarkTrue = false;
 
 	eachImagesDistribution(newIndex, ['image', 'folder'], function(image){
 
-		if(!isBookmarkTrue && images[image.index] && isBookmark(p.normalize(images[image.index].path)))
+		if(!isBookmarkTrue && imagesData[image.index] && isBookmark(p.normalize(imagesData[image.index].path)))
 			isBookmarkTrue = true;
 
 	});
 }
 
+// 
+var nextOpenChapterProgress = false;
+
+function setNextOpenChapterProgress(chapterIndex, chapterProgress)
+{
+	nextOpenChapterProgress = {
+		chapterIndex: chapterIndex,
+		chapterProgress: chapterProgress,
+	};
+}
+
+// Go to ebook chapter progress
+function goToChapterProgress(chapterIndex, chapterProgress, animation = true)
+{
+	nextOpenChapterProgress = false;
+	let closest = false;
+
+	for(let i = 0, len = _ebook.chaptersPages[chapterIndex].length; i < len; i++)
+	{
+		let diff = Math.abs(_ebook.chaptersPages[chapterIndex][i].chapterProgress - chapterProgress);
+
+		if(closest === false || diff < closest.diff)
+		{
+			closest = {
+				page: _ebook.chaptersPages[chapterIndex][i],
+				diff: diff,
+			};
+		}
+	}
+
+	if(closest.page)
+	{
+		let index = closest.page.index;
+
+		if(doublePage.active())
+			index = Math.ceil(index / 2);
+
+		if(readingManga())
+			index = (view.distribution.total - closest.page.index);
+
+		reading.goToIndex(index, animation);
+	}
+}
+
 //Go to the next comic page
 function goNext()
 {
-	saveReadingProgressA = true;
+	progress.activeSave();
+
+	if(readingViewIs('panels'))
+	{
+		if(panels.goNext())
+			return;
+	}
 
 	var nextIndex = currentIndex + 1;
 
-	readingDirection = true;
+	readingDirection = realReadingDirection = true;
 
 	if(currentIndex < 1)
+	{
 		showPreviousComic(2, true);
-	else if(nextIndex <= indexNum || ((readingViewIs('scroll') && (_config.readingViewAdjustToWidth || _config.readingWebtoon)) && currentPageVisibility < maxPageVisibility))
-		goToIndex(nextIndex, true, true);
-	else if(currentIndex == indexNum && dom.nextComic() && (!_config.readingManga || readingViewIs('scroll')))
+	}
+	else if(nextIndex <= view.distribution.total || ((readingViewIs('scroll') && (_config.readingViewAdjustToWidth || _config.readingWebtoon)) && currentPageVisibility < maxPageVisibility))
+	{
+		if(_config.readingWebtoon || config.scrollMovePercentInVerticalMode)
+			goScrollPercent(config.scrollMovePercent, true);
+		else
+			goToIndex(nextIndex, true, true);
+
+		music.soundEffect.page();
+	}
+	else if(currentIndex == view.distribution.total && dom.nextComic() && !readingManga())
+	{
 		showNextComic(1, true);
-	else if(currentIndex == indexNum && dom.previousComic() && _config.readingManga && !readingViewIs('scroll'))
+	}
+	else if(currentIndex == view.distribution.total && dom.previousComic() && readingManga())
+	{
 		showNextComic(1, true, true);
+	}
 }
 
 //Go to the previous comic page
 function goPrevious()
 {
-	saveReadingProgressA = true;
+	progress.activeSave();
+
+	if(readingViewIs('panels'))
+	{
+		if(panels.goPrev())
+			return;
+	}
 
 	var previousIndex = currentIndex - 1;
 
-	readingDirection = false;
+	readingDirection = realReadingDirection = false;
 
-	if(currentIndex > indexNum)
+	if(currentIndex > view.distribution.total)
+	{
 		showNextComic(2, true);
+	}
 	else if(previousIndex > 0 || ((readingViewIs('scroll') && (_config.readingViewAdjustToWidth || _config.readingWebtoon)) && currentPageVisibility > 0))
-		goToIndex(previousIndex, true, true)
-	else if(previousIndex == 0 && dom.previousComic() && (!_config.readingManga || readingViewIs('scroll')))
+	{
+		if(_config.readingWebtoon || config.scrollMovePercentInVerticalMode)
+			goScrollPercent(-config.scrollMovePercent, true);
+		else
+			goToIndex(previousIndex, true, true);
+
+		music.soundEffect.page();
+	}
+	else if(previousIndex == 0 && dom.previousComic() && !readingManga())
+	{
 		showPreviousComic(1, true);
-	else if(previousIndex == 0 && dom.nextComic() && _config.readingManga && !readingViewIs('scroll'))
+	}
+	else if(previousIndex == 0 && dom.nextComic() && readingManga())
+	{
 		showPreviousComic(1, true, true);
+	}
 }
 
 //Go to the start of the comic
 function goStart(force = false)
 {
-	if(force || !_config.readingManga || readingViewIs('scroll'))
+	if(force || !readingManga() || 1)
 	{
-		saveReadingProgressA = true;
+		const hasComic = readingManga() ? dom.nextComic() : dom.previousComic();
+		progress.activeSave();
 
-		if(currentIndex > indexNum || (currentIndex - 1 == 0 && dom.previousComic()))
+		if((currentIndex > view.distribution.total || (currentIndex - 1 == 0 && hasComic)) && (!maxPageVisibility || currentPageVisibility == 0))
 		{
 			goPrevious();
+
+			return false;
 		}
 		else
 		{
 			readingDirection = true;
+			realReadingDirection = false;
 
 			goToIndex(1, true);
+
+			return true;
 		}
 	}
 	else
 	{
-		goEnd(true);
+		return goEnd(true);
+	}
+}
+
+function goPrevComic()
+{
+	const hasComic = readingManga() ? dom.nextComic() : dom.previousComic();
+	
+	if(hasComic)
+	{
+		let speed = _config.readingViewSpeed;
+		_config.readingViewSpeed = 0;
+
+		let double = goStart();
+		if(double) goStart();
+
+		_config.readingViewSpeed = speed;
 	}
 }
 
 //Go to the end of the comic
 function goEnd(force = false)
 {
-	if(force || !_config.readingManga || readingViewIs('scroll'))
+	if(force || !readingManga() || 1)
 	{
-		saveReadingProgressA = true;
+		const hasComic = readingManga() ? dom.previousComic() : dom.nextComic();
+		progress.activeSave();
 
-		if(currentIndex < 1 || (currentIndex == indexNum && dom.nextComic()))
+		if((currentIndex < 1 || (currentIndex == view.distribution.total && hasComic)) && (!maxPageVisibility || maxPageVisibility == currentPageVisibility))
 		{
 			goNext();
+
+			return false;
 		}
 		else
 		{
 			readingDirection = false;
+			realReadingDirection = true;
 
-			goToIndex(indexNum, true, true, true);
+			goToIndex(view.distribution.total, true, true, true);
+
+			return true;
 		}
 	}
 	else
 	{
-		goStart(true);
+		return goStart(true);
 	}
+}
+
+function goNextComic()
+{
+	const hasComic = readingManga() ? dom.previousComic() : dom.nextComic();
+
+	if(hasComic)
+	{
+		let speed = _config.readingViewSpeed;
+		_config.readingViewSpeed = 0;
+
+		let double = goEnd();
+		if(double) goEnd();
+
+		_config.readingViewSpeed = speed;
+	}
+}
+
+var scrollNextOrPrevComicDelayed = false, scrollNextOrPrevComicST = false;
+
+function scrollNextOrPrevComic(prev = false, delay = false)
+{
+	if(!config.readingGoNextPrevChapterWithScroll) return;
+
+	if(delay && !scrollNextOrPrevComicDelayed && ((prev && scrollInStart) || (!prev && scrollInEnd)))
+	{
+		if(scrollNextOrPrevComicST) return;
+
+		scrollNextOrPrevComicST = setTimeout(function(){
+
+			scrollNextOrPrevComicDelayed = true;
+			scrollNextOrPrevComicST = false;
+
+		}, 500);
+
+		return;
+	}
+
+	scrollNextOrPrevComicDelayed = false;
+
+	if(prev && (scrollInStart || currentIndex == view.distribution.total + 1))
+	{
+		if(currentIndex != 0)
+			reading.goPrev();
+
+		return true;
+	}
+	else if(!prev && (scrollInEnd || currentIndex == 0))
+	{	
+		if(currentIndex != view.distribution.total + 1)
+			reading.goNext();
+
+		return true;
+	}
+
+	return false;
+}
+
+function onScroll(event)
+{
+	if(!isLoaded || !onReading) return;
+
+	if(activeOnScroll && readingViewIs('scroll'))
+	{
+		let scrollTop = this.scrollTop;
+
+		let center = 0;
+
+		let availableScroll = view.rightSize.scrollHeight - view.rightSize.height;
+		let centerOffset = (availableScroll < view.rightSize.height ? availableScroll : view.rightSize.height) / 2;
+
+		if(scrollTop < centerOffset)
+			center = scrollTop + (centerOffset * (scrollTop / centerOffset));
+		else if(scrollTop + centerOffset > availableScroll)
+			center = scrollTop + centerOffset + (centerOffset * (1 - (availableScroll - scrollTop) / centerOffset));
+		else
+			center = scrollTop + centerOffset;
+
+		let selIndex = false;
+		let closest = false;
+
+		toBreak:
+		for(let key1 = 0, len = view.imagesFullPosition.length; key1 < len; key1++)
+		{
+			const group = view.imagesFullPosition[key1];
+
+			for(const position of group)
+			{
+				if(position.top < center && position.bottom > center)
+				{
+					selIndex = +key1;
+					break toBreak;
+				}
+				else
+				{
+					let diff = Math.abs(position.center - center);
+
+					if(closest === false || diff < closest.diff)
+					{
+						selIndex = +key1;
+						closest = {center: position.center, diff: diff};
+					}
+				}
+			}
+		}
+
+		let imgHeight = view.imagesFullPosition[selIndex][0].bottom - view.imagesFullPosition[selIndex][0].top + (readingMargin().top * 2);
+
+		let pageVisibility = Math.floor(imgHeight / view.rightSize.height);
+
+		maxPageVisibility = pageVisibility;
+
+		let contentHeightRes = pageVisibility > 0 ? ((view.rightSize.height * pageVisibility) - imgHeight) / pageVisibility : 0;
+
+		const scrollPart = ((view.rightSize.height - contentHeightRes) - view.rightSize.height / pageVisibility);
+
+		currentPageVisibility = Math.round((scrollTop - (view.imagesFullPosition[selIndex][0].top - readingMargin().top)) / scrollPart);
+		if(currentPageVisibility < 0) currentPageVisibility = 0;
+
+		if(currentIndex != selIndex + 1)
+		{
+			if(currentScale != 1 && !(readingGlobalZoom() && readingViewIs('scroll')))
+				reading.resetZoom();
+
+			var isBookmarkTrue = false;
+
+			eachImagesDistribution(selIndex, ['image'], function(image){
+
+				if(!isBookmarkTrue && imagesData[image.index] && isBookmark(p.normalize(imagesData[image.index].path)))
+					isBookmarkTrue = true;
+
+			});
+
+			var imageIndex = false;
+
+			eachImagesDistribution(selIndex, ['image', 'folder'], function(image){
+
+				if(!imageIndex)
+					imageIndex = image.index
+
+			});
+
+			currentIndex = selIndex + 1;
+
+			if(imageIndex)
+			{
+				progress.activeSave();
+
+				goToImageCL(imageIndex, true, true);
+			}
+		}
+
+		view.stayInLine.previousScrollTop = scrollTop;
+
+		scrollInStart = scrollTop <= 1 ? true : false;
+		scrollInEnd = scrollTop >= availableScroll - 1 ? true : false;
+
+		changeHeaderButtons(scrollInStart, scrollInEnd, true);
+	}
+
+	if(onReading && config.readingMagnifyingGlass)
+		magnifyingGlassControlPrev();
+}
+
+function abortClick(event)
+{
+	if(event.target.classList.contains('folder') || event.target.closest('.folder'))
+		return true;
+
+	const pageX = app.pageX(event);
+	const pageY = app.pageY(event);
+
+	const maxDiff = Math.max(Math.abs(pageX - zoomMoveData.x), Math.abs(pageY - zoomMoveData.y));
+	const isTouch = (event.sourceCapabilities && event.sourceCapabilities.firesTouchEvents) ? true : false;
+
+	if((!reading.haveZoom() || (config.readingMoveZoomWithMouse && !readingViewIs('scroll')) || maxDiff < 10) && (!readingDragScroll || !readingDragScroll.start) && (!isTouch || !config.readingMagnifyingGlass))
+		return false;
+
+	return true;
 }
 
 function leftClick(event)
 {
 	if(event.target.classList.contains('folder') || event.target.closest('.folder')) return;
 
+	let pageX = app.pageX(event);
+	let pageY = app.pageY(event);
+
+	let maxDiff = Math.max(Math.abs(pageX - zoomMoveData.x), Math.abs(pageY - zoomMoveData.y));
+
 	let isTouch = (event.sourceCapabilities && event.sourceCapabilities.firesTouchEvents) ? true : false;
 
-	if(!reading.haveZoom() && (!readingDragScroll || !readingDragScroll.start) && (!isTouch || !config.readingMagnifyingGlass))
+	if((!reading.haveZoom() || (config.readingMoveZoomWithMouse && !readingViewIs('scroll')) || maxDiff < 10) && (!readingDragScroll || !readingDragScroll.start) && (!isTouch || !config.readingMagnifyingGlass))
 	{
 		if(isTouch)
 			reading.goNext();
@@ -1007,9 +1031,14 @@ function rightClick(e)
 {
 	if(event.target.classList.contains('folder') || event.target.closest('.folder')) return;
 
+	let pageX = app.pageX(event);
+	let pageY = app.pageY(event);
+
+	let maxDiff = Math.max(Math.abs(pageX - zoomMoveData.x), Math.abs(pageY - zoomMoveData.y));
+
 	let isTouch = (event.sourceCapabilities && event.sourceCapabilities.firesTouchEvents) ? true : false;
 
-	if(!reading.haveZoom() && (!readingDragScroll || !readingDragScroll.start) && (!isTouch || !config.readingMagnifyingGlass))
+	if((!reading.haveZoom() || (config.readingMoveZoomWithMouse && !readingViewIs('scroll')) || maxDiff < 10) && (!readingDragScroll || !readingDragScroll.start) && (!isTouch || !config.readingMagnifyingGlass))
 	{
 		if(isTouch)
 			reading.goPrevious();
@@ -1022,7 +1051,7 @@ function rightClick(e)
 	return false;
 }
 
-var showComicSkip;
+var showComicSkip = false;
 
 //Begins to show the next comic
 function showNextComic(mode, animation = true, invert = false)
@@ -1035,85 +1064,90 @@ function showNextComic(mode, animation = true, invert = false)
 
 	if(mode == 1)
 	{
-		var transition = _config.readingViewSpeed < _config.readingDelayComicSkip ? _config.readingViewSpeed : _config.readingDelayComicSkip;
+		var transition = _config.readingViewSpeed < config.readingDelayComicSkip ? _config.readingViewSpeed : config.readingDelayComicSkip;
 
-		if(_config.readingDelayComicSkip != 0)
+		if(config.readingDelayComicSkip != 0)
 		{
-			if(readingViewIs('slide'))
-			{
-				var skip = template.contentRight('.reading-skip-right');
-
-				skip.css({
-					'transition': 'transform '+transition+'s, background-color 0.2s, box-shadow 0.2s',
-					'transform': 'translate(-100px, 0px)',
-				});
-
-				var scale = ((contentWidth - 100) / contentWidth);
-
-				template.contentRight('.reading-body > div, .reading-lens > div > div').css({
-					'transform-origin': '0px center',
-					'transition': 'transform '+((animation) ? transition : 0)+'s, background-color 0.2s, box-shadow 0.2s',
-					'transition-property': 'transform',
-					'transform': 'scale('+scale+') translate(-'+(contentWidth * (indexNum - 1))+'px, 0px)',
-				});
-			}
-			else if(readingViewIs('scroll'))
+			if(readingViewIs('scroll'))
 			{
 				var skip = template.contentRight('.reading-skip-bottom');
 
 				skip.css({
-					'transition': 'transform '+transition+'s, background-color 0.2s, box-shadow 0.2s',
-					'transform': 'translate(0px, -100px)',
+					'transition': transition+'s, background-color 0.2s, box-shadow 0.2s',
+					'transform': 'translate(0px, -116px)',
+					'opacity': 1,
 				});
 
-				var scale = ((contentHeight - 100) / contentHeight);
+				var scale = ((contentHeight - 132) / contentHeight);
 
-				template.contentRight('.reading-body, .reading-lens > div').css({
+				template.contentRight('.reading-body').css({
 					'transform-origin': 'center '+(template.contentRight('.reading-body').height() - contentHeight)+'px',
 					'transition': 'transform '+((animation) ? transition : 0)+'s, background-color 0.2s, box-shadow 0.2s',
 					'transition-property': 'transform',
 					'transform': 'scale('+scale+')',
 				});
 			}
+			else
+			{
+				var skip = template.contentRight('.reading-skip-right');
 
-			skip.find('circle').css('animation-duration', _config.readingDelayComicSkip+'s').removeClass('a').delay(10).queue(function(next){$(this).addClass('a');next();});
+				skip.css({
+					'transition': transition+'s, background-color 0.2s, box-shadow 0.2s',
+					'transform': 'translate(-116px, 0px)',
+					'opacity': 1,
+				});
+
+				var scale = ((contentWidth - 132) / contentWidth);
+
+				template.contentRight('.reading-body > div').css({
+					'transform-origin': '0px center',
+					'transition': 'transform '+((animation) ? transition : 0)+'s, background-color 0.2s, box-shadow 0.2s',
+					'transition-property': 'transform',
+					'transform': 'scale('+scale+') translate(-'+(contentWidth * (readingViewIs('slide') ? (view.distribution.total - 1) : 0))+'px, 0px)',
+				});
+			}
+
+			skip.find('circle').css('animation-duration', config.readingDelayComicSkip+'s').removeClass('a').delay(10).queue(function(next){$(this).addClass('a');next();});
 		}
 
 		if(invert)
-			showComicSkip = setTimeout('dom.openComic(true, "'+escapeQuotes(escapeBackSlash(dom.previousComic()), 'doubles')+'", "'+escapeQuotes(escapeBackSlash(dom.indexMainPathA()), 'doubles')+'", true, false, true);', _config.readingDelayComicSkip * 1000);
+			showComicSkip = setTimeout('reading.progress.save(); reading.setFromSkip(); dom.openComic(true, "'+escapeQuotes(escapeBackSlash(dom.previousComic()), 'doubles')+'", "'+escapeQuotes(escapeBackSlash(dom.history.mainPath), 'doubles')+'", true, false, true);', config.readingDelayComicSkip * 1000);
 		else
-			showComicSkip = setTimeout('dom.openComic(true, "'+escapeQuotes(escapeBackSlash(dom.nextComic()), 'doubles')+'", "'+escapeQuotes(escapeBackSlash(dom.indexMainPathA()), 'doubles')+'", false, false, true);', _config.readingDelayComicSkip * 1000);
+			showComicSkip = setTimeout('reading.progress.save(); reading.setFromSkip(); dom.openComic(true, "'+escapeQuotes(escapeBackSlash(dom.nextComic()), 'doubles')+'", "'+escapeQuotes(escapeBackSlash(dom.history.mainPath), 'doubles')+'", false, false, true);', config.readingDelayComicSkip * 1000);
 
-		currentIndex = indexNum + 1;
+		currentIndex = view.distribution.total + 1;
 	}
 	else
 	{
-		if(readingViewIs('slide'))
-		{
-			var skip = template.contentRight('.reading-skip-right').css({
-				'transition': 'transform '+_config.readingViewSpeed+'s, background-color 0.2s, box-shadow 0.2s',
-				'transform': 'translate(0px, 0px)',
-			});
-
-			template.contentRight('.reading-body > div, .reading-lens > div > div').css({
-				'transition': 'transform '+_config.readingViewSpeed+'s, background-color 0.2s, box-shadow 0.2s',
-				'transform': 'scale(1) translate(-'+(contentWidth * (indexNum - 1))+'px, 0px)',
-			});
-		}
-		else if(readingViewIs('scroll'))
+		if(readingViewIs('scroll'))
 		{
 			var skip = template.contentRight('.reading-skip-bottom').css({
-				'transition': 'transform '+_config.readingViewSpeed+'s, background-color 0.2s, box-shadow 0.2s',
+				'transition': _config.readingViewSpeed+'s, background-color 0.2s, box-shadow 0.2s',
 				'transform': 'translate(0px, 0px)',
+				'opacity': 0,
 			});
 
-			template.contentRight('.reading-body, .reading-lens > div').css({
+			template.contentRight('.reading-body').css({
 				'transition': 'transform '+_config.readingViewSpeed+'s, background-color 0.2s, box-shadow 0.2s',
 				'transform': 'scale(1) translate(0px, 0px)',
 			});
 		}
+		else
+		{
+			var skip = template.contentRight('.reading-skip-right').css({
+				'transition': _config.readingViewSpeed+'s, background-color 0.2s, box-shadow 0.2s',
+				'transform': 'translate(0px, 0px)',
+				'opacity': 0,
+			});
 
-		currentIndex = indexNum;
+			template.contentRight('.reading-body > div').css({
+				'transition': 'transform '+_config.readingViewSpeed+'s, background-color 0.2s, box-shadow 0.2s',
+				'transform': 'scale(1) translate(-'+(contentWidth * (readingViewIs('slide') ? (view.distribution.total - 1) : 0))+'px, 0px)',
+			});
+		}
+
+		showComicSkip = setTimeout(function(){showComicSkip = false}, _config.readingViewSpeed * 1000);
+		currentIndex = view.distribution.total;
 	}
 }
 
@@ -1128,105 +1162,176 @@ function showPreviousComic(mode, animation = true, invert = false)
 
 	if(mode == 1)
 	{
-		var transition = _config.readingViewSpeed < _config.readingDelayComicSkip ? _config.readingViewSpeed : _config.readingDelayComicSkip;
+		var transition = _config.readingViewSpeed < config.readingDelayComicSkip ? _config.readingViewSpeed : config.readingDelayComicSkip;
 
-		if(_config.readingDelayComicSkip != 0)
+		if(config.readingDelayComicSkip != 0)
 		{
-			if(readingViewIs('slide'))
-			{
-				var skip = template.contentRight('.reading-skip-left');
-
-				skip.css({
-					'transition': 'transform '+transition+'s, background-color 0.2s, box-shadow 0.2s',
-					'transform': 'translate(100px, 0px)',
-				});
-
-				var scale = ((contentWidth - 100) / contentWidth);
-
-				template.contentRight('.reading-body, .reading-lens > div').css({
-					'transform-origin': contentWidth+'px center',
-					'transition': 'transform '+((animation) ? transition : 0)+'s, background-color 0.2s, box-shadow 0.2s',
-					'transition-property': 'transform',
-					'transform': 'scale('+scale+')',
-				});
-
-			}
-			else if(readingViewIs('scroll'))
+			if(readingViewIs('scroll'))
 			{
 				var skip = template.contentRight('.reading-skip-top');
 
 				skip.css({
-					'transition': 'transform '+transition+'s, background-color 0.2s, box-shadow 0.2s',
-					'transform': 'translate(0px, 100px)',
+					'transition': transition+'s, background-color 0.2s, box-shadow 0.2s',
+					'transform': 'translate(0px, 116px)',
+					'opacity': 1,
 				});
 
-				var scale = ((contentHeight - 100) / contentHeight);
+				var scale = ((contentHeight - 132) / contentHeight);
 
-				template.contentRight('.reading-body, .reading-lens > div').css({
+				template.contentRight('.reading-body').css({
 					'transform-origin': 'center '+contentHeight+'px',
 					'transition': 'transform '+((animation) ? transition : 0)+'s, background-color 0.2s, box-shadow 0.2s',
 					'transition-property': 'transform',
 					'transform': 'scale('+scale+')',
 				});
 			}
+			else
+			{
+				var skip = template.contentRight('.reading-skip-left');
 
-			skip.find('circle').css('animation-duration', _config.readingDelayComicSkip+'s').removeClass('a').delay(10).queue(function(next){$(this).addClass('a');next();});
+				skip.css({
+					'transition': transition+'s, background-color 0.2s, box-shadow 0.2s',
+					'transform': 'translate(116px, 0px)',
+					'opacity': 1,
+				});
+
+				var scale = ((contentWidth - 132) / contentWidth);
+
+				template.contentRight('.reading-body').css({
+					'transform-origin': contentWidth+'px center',
+					'transition': 'transform '+((animation) ? transition : 0)+'s, background-color 0.2s, box-shadow 0.2s',
+					'transition-property': 'transform',
+					'transform': 'scale('+scale+')',
+				});
+			}
+
+			skip.find('circle').css('animation-duration', config.readingDelayComicSkip+'s').removeClass('a').delay(10).queue(function(next){$(this).addClass('a');next();});
 		}
 
 		if(invert)
-			showComicSkip = setTimeout('dom.openComic(true, "'+escapeQuotes(escapeBackSlash(dom.nextComic()), 'doubles')+'", "'+escapeQuotes(escapeBackSlash(dom.indexMainPathA()), 'doubles')+'", false, false, true);', _config.readingDelayComicSkip * 1000);
+			showComicSkip = setTimeout('reading.progress.save(); reading.setFromSkip(); dom.openComic(true, "'+escapeQuotes(escapeBackSlash(dom.nextComic()), 'doubles')+'", "'+escapeQuotes(escapeBackSlash(dom.history.mainPath), 'doubles')+'", false, false, true);', config.readingDelayComicSkip * 1000);
 		else
-			showComicSkip = setTimeout('dom.openComic(true, "'+escapeQuotes(escapeBackSlash(dom.previousComic()), 'doubles')+'", "'+escapeQuotes(escapeBackSlash(dom.indexMainPathA()), 'doubles')+'", true, false, true);', _config.readingDelayComicSkip * 1000);
+			showComicSkip = setTimeout('reading.progress.save(); reading.setFromSkip(); dom.openComic(true, "'+escapeQuotes(escapeBackSlash(dom.previousComic()), 'doubles')+'", "'+escapeQuotes(escapeBackSlash(dom.history.mainPath), 'doubles')+'", true, false, true);', config.readingDelayComicSkip * 1000);
 
 		currentIndex = 0;
 	}
 	else
 	{
-		if(readingViewIs('slide'))
-		{
-			var skip = template.contentRight('.reading-skip-left');
-
-			skip.css({
-				'transition': 'transform '+_config.readingViewSpeed+'s, background-color 0.2s, box-shadow 0.2s',
-				'transform': 'translate(0px, 0px)',
-			});
-
-			template.contentRight('.reading-body, .reading-lens > div').css({
-				'transition': 'transform '+_config.readingViewSpeed+'s, background-color 0.2s, box-shadow 0.2s',
-				'transform': 'scale(1) translate(0px, 0px)',
-			});
-		}
-		else if(readingViewIs('scroll'))
+		if(readingViewIs('scroll'))
 		{
 			var skip = template.contentRight('.reading-skip-top');
 
 			skip.css({
-				'transition': 'transform '+_config.readingViewSpeed+'s, background-color 0.2s, box-shadow 0.2s',
+				'transition': _config.readingViewSpeed+'s, background-color 0.2s, box-shadow 0.2s',
 				'transform': 'translate(0px, 0px)',
+				'opacity': 0,
 			});
 
-			template.contentRight('.reading-body, .reading-lens > div').css({
+			template.contentRight('.reading-body').css({
+				'transition': 'transform '+_config.readingViewSpeed+'s, background-color 0.2s, box-shadow 0.2s',
+				'transform': 'scale(1) translate(0px, 0px)',
+			});
+		}
+		else
+		{
+			var skip = template.contentRight('.reading-skip-left');
+
+			skip.css({
+				'transition': _config.readingViewSpeed+'s, background-color 0.2s, box-shadow 0.2s',
+				'transform': 'translate(0px, 0px)',
+				'opacity': 0,
+			});
+
+			template.contentRight('.reading-body').css({
 				'transition': 'transform '+_config.readingViewSpeed+'s, background-color 0.2s, box-shadow 0.2s',
 				'transform': 'scale(1) translate(0px, 0px)',
 			});
 		}
 
+		showComicSkip = setTimeout(function(){showComicSkip = false}, _config.readingViewSpeed * 1000);
 		currentIndex = 1;
 	}
 }
 
-var currentScale = 1, scalePrevData = {tranX: 0, tranX2: 0, tranY: 0, tranY2: 0, scale: 1, scrollTop: 0}, originalRect = false, originalRectReadingBody = false, haveZoom = false, currentZoomIndex = false, applyScaleST = false, zoomingIn = false, prevAnime = false;
+var currentScale = 1, scalePrevData = {tranX: 0, tranX2: 0, tranY: 0, tranY2: 0, scale: 1, scrollTop: 0, extra: {tranX: false, tranY: false}}, originalRect = false, originalRectReadingBody = false, originalRect2 = false, originalRectReadingBody2 = false, haveZoom = false, currentZoomIndex = false, applyScaleST = false, zoomingIn = false, prevAnime = false;
 
-function applyScaleScrollAndHeight()
+// Scroll container, includes the 12px scrollbar that view.rightSize excludes in scroll view
+function getViewportRect()
 {
+	const rightSize = view.rightSize;
+	if(!rightSize) return template._contentRight().getBoundingClientRect();
 
+	return {
+		left: rightSize.left,
+		top: rightSize.top,
+		width: rightSize.width + (readingViewIs('scroll') ? 12 : 0),
+		height: rightSize.height,
+	};
 }
 
-function applyScale(animation = true, scale = 1, center = false, zoomOut = false)
+// .reading-body, it grows to the full scroll height in scroll view
+function getBodyRect()
 {
-	let animationDurationS = ((animation) ? _config.readingViewSpeed : 0);
+	const rightSize = view.rightSize;
 
-	scale = Math.round(scale * 100) / 100;
+	return {
+		left: rightSize.left,
+		top: rightSize.top - dom.getContentRightScrollTop(false, true),
+		width: rightSize.width,
+		height: rightSize.scrollHeight,
+	};
+}
+
+// .image-position{index}, the row of the group (includes margins) in scroll view
+function getGroupRect(index)
+{
+	const rightSize = view.rightSize;
+	const group = view.imagesFullPosition?.[index]?.[0];
+	if(!group) return null;
+
+	const next = view.imagesFullPosition[index + 1]?.[0];
+	const bottom = next ? next.top : rightSize.scrollHeight;
+
+	return {
+		left: rightSize.left,
+		top: rightSize.top + group.top - dom.getContentRightScrollTop(false, true),
+		width: rightSize.width,
+		height: bottom - group.top,
+	};
+}
+
+function resetZoomState()
+{
+	clearTimeout(applyScaleST);
+
+	currentScale = 1;
+	scalePrevData = {tranX: 0, tranX2: 0, tranY: 0, tranY2: 0, scale: 1, scrollTop: 0};
+	originalRect = false;
+	originalRectReadingBody = false;
+	originalRect2 = false;
+	originalRectReadingBody2 = false;
+	haveZoom = false;
+	currentZoomIndex = false;
+	applyScaleST = false;
+	zoomingIn = false;
+	zoomMoveData = {};
+	contentRightRect = false;
+}
+
+let applyScaleDelayedST = false;
+
+function applyScale(animation = true, scale = 1, center = false, zoomOut = false, delayed = false, {force = false, tranX = false, tranY = false, crossZoomLimits = false, restoreScrollTop = false} = {})
+{	
+	if((!onReading && !_onReading) || !isLoaded)
+		return;
+
+	if(scale !== 1)
+		settings.set('readingPrevZoom', scale);
+
+	settings.set('readingStartPrevZoom', scale);
+
+	let animationDurationS = ((animation) ? _config.readingViewSpeed : 0);
+	let applyScaleEnd = false;
 
 	if(currentZoomIndex === false)
 	{
@@ -1236,13 +1341,13 @@ function applyScale(animation = true, scale = 1, center = false, zoomOut = false
 		}
 		else
 		{
-			var currentRect = template.contentRight('.image-position'+(currentIndex - 1)).get(0).getBoundingClientRect();
+			const currentRect = getGroupRect(currentIndex - 1) || template.contentRight('.image-position'+(currentIndex - 1)).get(0).getBoundingClientRect();
 
 			if(currentRect.top > currentPageXY.y && (currentIndex - 2) >= 0)
 			{
 				currentZoomIndex = (currentIndex - 2);
 			}
-			else if(currentRect.top + currentRect.height < currentPageXY.y && currentIndex <= indexNum)
+			else if(currentRect.top + currentRect.height < currentPageXY.y && currentIndex <= view.distribution.total)
 			{
 				currentZoomIndex = currentIndex;
 			}
@@ -1255,49 +1360,80 @@ function applyScale(animation = true, scale = 1, center = false, zoomOut = false
 
 	let scrollTop = 0, translateX = 0, translateY = 0;
 
-	if(scale != scalePrevData.scale)
+	if(scale != scalePrevData.scale || tranX != scalePrevData.extra?.tranX || tranY != scalePrevData.extra?.tranY || force)
 	{
-		let content = template.contentRight().children();
-		content.stop(true);
+		scalePrevData.extra = {tranX: tranX, tranY: tranY};
 
-		if(config.readingGlobalZoom && readingViewIs('scroll'))
+		if(scale == 1 && config.readingResetZoomButtonToPrevZoom)
+			template.barHeader('.button-reset-zoom').attr('hover-text', language.menu.view.prevZoom).html('zoom_out_map');
+		else if(scale == 1)
+			template.barHeader('.button-reset-zoom').attr('hover-text', language.menu.view.originalSize).html('view_real_size'); // aspect_ratio
+		else
+			template.barHeader('.button-reset-zoom').attr('hover-text', language.menu.view.resetZoom).html('aspect_ratio'); // zoom_out_map
+
+		let contentRight = template._contentRight();
+
+		contentRight.querySelector('.reading-body').classList.add('zooming');
+		dom.this(contentRight).find('img.zoomOriginalSize', true).removeClass('zoomOriginalSize');
+		if(scale == 1) dom.this(contentRight).find('img.zoomed', true).removeClass('zoomed');
+
+		let content = contentRight.firstElementChild;
+		$(content).stop(true);
+
+		clearTimeout(applyScaleST);
+
+		if(readingGlobalZoom() && readingViewIs('scroll'))
 		{
 			zoomingIn = true;
 			disableOnScroll(true);
 
 			if(originalRect === false)
 			{
-				originalRect = template.contentRight('.reading-body').get(0).getBoundingClientRect();
-				originalRectReadingBody = template.contentRight().children().get(0).getBoundingClientRect();
+				originalRect = originalRect2 = getBodyRect();
+				originalRectReadingBody = getViewportRect();
+			}
+			else if(originalRect2 === false)
+			{
+				originalRect2 = getBodyRect();
 			}
 
-			scrollTop = content.scrollTop();
+			scrollTop = content.scrollTop;
+			let scrollHeight = content.scrollHeight;
 
-			let pageX = currentPageXY.x - originalRect.left;
-			let pageY = currentPageXY.y + scrollTop - originalRectReadingBody.top;
+			let _scale = scalePrevData._scale ? scale / scalePrevData._scale : scale;
 
-			let addX = (0.5 - (pageX / originalRect.width)) * originalRect.width;
-			let addY = (0.5 - (pageY / originalRect.height)) * originalRect.height;
+			let scaleOffset = 1 / scale;
+
+			let _pageX = currentPageXY.x - originalRect2.left;
+			let _pageY = currentPageXY.y - originalRectReadingBody.top;
+
+			let addX = (0.5 - (_pageX / originalRect2.width)) * originalRect2.width;
+			let addY = _pageY;
 
 			if(center)
 			{
 				addX = 0;
-				addY = (originalRect.height / 2 - originalRectReadingBody.height / 2) - scrollTop;
-
-				//if(addY > 0)
-				//	addY = 0;
+				addY = originalRectReadingBody.height / 2;
 			}
 
 			translateX = (scalePrevData.tranX / scalePrevData.scale * scale) + (addX / scalePrevData.scale * (scale - scalePrevData.scale));
-			translateY = (scalePrevData.tranY / scalePrevData.scale * scale) + (addY / scalePrevData.scale * (scale - scalePrevData.scale));
 
 			if(zoomOut)
 				translateX = scalePrevData.tranX * (scale - 1) / (scalePrevData.scale - 1);
 
+			let scaleOffsetY = (originalRect2.height * _scale - originalRect2.height);
+
+			translateY = -(scaleOffsetY * (scrollTop / scrollHeight));
+			translateY = translateY - (addY * (scaleOffsetY / originalRect2.height));
+
+			if(translateY > scrollTop)
+				translateY = scrollTop;
+			else if(originalRect2.height * _scale + translateY < scrollTop + originalRectReadingBody.height)
+				translateY = (scrollTop + originalRectReadingBody.height) - originalRect2.height * _scale;
+
 			if(scale <= 1)
 			{
 				translateX = 0;
-				if(scale < 1) translateY = 0;
 				haveZoom = false;
 			}
 			else
@@ -1305,38 +1441,52 @@ function applyScale(animation = true, scale = 1, center = false, zoomOut = false
 				haveZoom = true;
 			}
 
-			template.contentRight('.reading-body > div').css({
+			if(tranX !== false) translateX = tranX;
+			if(tranY !== false) translateY = tranY + scrollTop;
+
+			let withLimits = notCrossZoomLimits(translateX, translateY, scale, crossZoomLimits);
+			translateX = withLimits.x;
+
+			dom.this(contentRight).find('.reading-body > div, .reading-lens > div > div', true).css({
 				transition: 'transform '+animationDurationS+'s, z-index '+animationDurationS+'s',
-				transform: 'translateX('+translateX+'px) translateY('+translateY+'px) scale('+scale+')',
-				transformOrigin: 'center center',
+				transform: 'translateX('+app.roundDPR(translateX)+'px) translateY('+app.roundDPR(translateY)+'px) scale('+scale+')',
+				transformOrigin: 'top center',
 				zIndex: 1,
-				// willChange: scale == 1 ? '' : 'transform',
 			});
 
-			clearTimeout(applyScaleST);
+			if(scale != 1) dom.this(contentRight).find('.reading-body > div img.originalSize', true).addClass('zoomed');
 
-			applyScaleST = setTimeout(function() {
+			fixBlurOnZoom(scale);
 
-				let scrollTop = content.scrollTop();
+			applyScaleEnd = function() {
 
-				let translateY = (originalRect.height * scale - originalRect.height) / 2;
+				let scrollTop = content.scrollTop;
 
-				template.contentRight('.reading-body').css({
+				let translateY = 0;
+
+				dom.this(contentRight).find('.reading-body').css({
 					height: (scale == 1 ? '' : (originalRect.height * scale)+'px'),
 				});
 
-				template.contentRight('.reading-body > div').css({
+				dom.this(contentRight).find('.reading-body > div, .reading-lens > div > div', true).css({
 					transition: 'transform 0s, z-index 0s',
-					transform: 'translateX('+scalePrevData.tranX+'px) translateY('+translateY+'px) scale('+scale+')',
+					transform: 'translateX('+app.roundDPR(scalePrevData.tranX)+'px) translateY('+app.roundDPR(translateY)+'px) scale('+scale+')',
 				});
 
-				content.scrollTop(scrollTop + (translateY - scalePrevData.tranY));
+				if(restoreScrollTop === false)
+					content.scrollTop = app.roundHalfDownDPR(scrollTop + (translateY - scalePrevData.tranY));
+				else
+					content.scrollTop = restoreScrollTop;
+
+				applyDiffScrolls((translateY - scalePrevData.tranY));
 
 				scalePrevData.tranY = translateY;
 
-				calculateView();
+				view.calculateView();
+
 				disableOnScroll(false);
-				zoomingIn = false;
+
+				originalRect2 = false;
 
 				if(scale == 1)
 				{
@@ -1344,23 +1494,32 @@ function applyScale(animation = true, scale = 1, center = false, zoomOut = false
 					currentZoomIndex = false;
 				}
 
-			}, animationDurationS * 1000);
+				scalePrevData._scale = scale;
+
+				contentRight.querySelector('.reading-body').classList.remove('zooming');
+
+				applyScaleST = false;
+				zoomingIn = false;
+
+			};
 		}
 		else
 		{
+			zoomingIn = true;
+
 			if(originalRect === false)
 			{
-				originalRect = template.contentRight('.image-position'+currentZoomIndex).get(0).getBoundingClientRect();
-				originalRectReadingBody = template.contentRight().children().get(0).getBoundingClientRect();
+				originalRect = !readingViewIs('scroll') ? getViewportRect() : (getGroupRect(currentZoomIndex) || contentRight.querySelector('.image-position'+currentZoomIndex).getBoundingClientRect());
+				originalRectReadingBody = getViewportRect();
 			}
 
 			if(!zoomOut)
 			{
-				let pageX = currentPageXY.x - originalRect.left;
-				let pageY = currentPageXY.y - originalRect.top;
+				let _pageX = currentPageXY.x - originalRect.left;
+				let _pageY = currentPageXY.y - originalRect.top;
 
-				let addX = (0.5 - (pageX / originalRect.width)) * originalRect.width;
-				let addY = (0.5 - (pageY / originalRect.height)) * originalRect.height;
+				let addX = (0.5 - (_pageX / originalRect.width)) * originalRect.width;
+				let addY = (0.5 - (_pageY / originalRect.height)) * originalRect.height;
 
 				if(center)
 				{
@@ -1388,19 +1547,71 @@ function applyScale(animation = true, scale = 1, center = false, zoomOut = false
 				haveZoom = true;
 			}
 
-			template.contentRight('.image-position'+currentZoomIndex).css({
-				transition: 'transform '+animationDurationS+'s, z-index '+animationDurationS+'s',
-				transform: 'translateX('+(translateX)+'px) translateY('+(translateY)+'px) scale('+scale+')',
-				transformOrigin: 'center center',
-				zIndex: scale == 1 ? 1 : 2,
-				// willChange: scale == 1 ? '' : 'transform',
-			});
+			if(tranX !== false) translateX = tranX;
+			if(tranY !== false) translateY = tranY;
+
+			let withLimits = notCrossZoomLimits(translateX, translateY, scale, crossZoomLimits);
+
+			translateX = withLimits.x;
+			translateY = withLimits.y;
+
+			let imagePosition = dom.this(contentRight).find('.image-position'+currentZoomIndex, true);
+
+			if(delayed)
+			{
+				if(applyScaleDelayedST) clearTimeout(applyScaleDelayedST);
+				applyScaleDelayedST = setTimeout(function() {
+
+					imagePosition.css({
+						transition: 'transform 0s, z-index 0s',
+						transform: 'translateX('+app.roundDPR(translateX)+'px) translateY('+app.roundDPR(translateY)+'px) scale('+scale+')',
+						transformOrigin: 'center center',
+						zIndex: scale == 1 ? 1 : 3,
+					});
+
+				}, _config.readingViewSpeed * 1000);
+			}
+			else
+			{
+				imagePosition.css({
+					transition: 'transform '+animationDurationS+'s, z-index '+animationDurationS+'s',
+					transform: 'translateX('+app.roundDPR(translateX)+'px) translateY('+app.roundDPR(translateY)+'px) scale('+scale+')',
+					transformOrigin: 'center center',
+					zIndex: scale == 1 ? 1 : 3,
+				});
+			}
 
 			if(scale == 1)
 			{
 				originalRect = false;
 				currentZoomIndex = false;
 			}
+			else
+			{
+				dom.this(imagePosition._this).find('img.originalSize', true).addClass('zoomed');
+			}
+
+			fixBlurOnZoom(scale, currentZoomIndex);
+
+			applyScaleEnd = function() {
+
+				contentRight.querySelector('.reading-body').classList.remove('zooming');
+
+				applyScaleST = false;
+				zoomingIn = false;
+
+			};
+		}
+
+		if(center)
+		{
+			zoomMoveData.x = (originalRect.left + originalRect.width / 2) - (translateX / scale);
+			zoomMoveData.y = (originalRect.top + originalRect.height / 2) - (translateY / scale);
+		}
+		else
+		{
+			zoomMoveData.x = currentPageXY.x;
+			zoomMoveData.y = currentPageXY.y;
 		}
 
 		scalePrevData = {
@@ -1409,87 +1620,529 @@ function applyScale(animation = true, scale = 1, center = false, zoomOut = false
 			tranY: translateY,
 			tranY2: translateY,
 			scale: scale,
+			_scale: scalePrevData._scale,
 			scrollTop: scrollTop,
+			extra: {
+				tranX: tranX,
+				tranY: tranY,
+			},
 		};
 
-		readingRender.setScale(scale, (config.readingGlobalZoom && readingViewIs('scroll')), _config.readingDoublePage);
+		render.setScale(scale, ((readingGlobalZoom() && readingViewIs('scroll')) || (readingGlobalZoomSlide() && !readingViewIs('scroll'))), doublePage.active());
+	}
+
+	setOriginalSize(scale);
+
+	if(applyScaleEnd)
+	{
+		if(animationDurationS > 0)
+			applyScaleST = setTimeout(applyScaleEnd, animationDurationS * 1000 + 100);
+		else
+			applyScaleEnd();
+	}
+}
+
+function applyDiffScrolls(diff = 0)
+{
+	if(gamepadScroll)
+		gamepadScroll.scrollTop = gamepadScroll.scrollTop + diff;
+
+	if(readingDragScroll)
+	{
+		readingDragScroll.content.stop(true);
+		readingDragScroll.scrollTop = readingDragScroll.scrollTop + diff;
+	}
+	else
+	{
+		template.contentRight().children().stop(true);
+	}
+}
+
+function zoomScrollHeight()
+{
+	if(scalePrevData.scale != 1)
+	{
+		const globalZoomScroll = readingGlobalZoom() && readingViewIs('scroll');
+
+		const contentRight = template._contentRight();
+		const readingBody = contentRight.querySelector('.reading-body');
+
+		const newRect = reading.view.rightSize;
+		originalRectReadingBody = getViewportRect();
+
+		const isScroll = readingViewIs('scroll')
+		const height = isScroll ? newRect.scrollHeight : newRect.height;
+
+		originalRect = {
+			width: newRect.width,
+			height: globalZoomScroll ? height / scalePrevData.scale : height,
+			left: newRect.left,
+			top: newRect.top,
+		};
+
+		originalRect2 = {
+			width: originalRect.width,
+			height: height,
+			left: newRect.left,
+			top: newRect.top,
+		};
+
+		if(!readingBody.classList.contains('zooming') && globalZoomScroll)
+		{
+			const readingBodyChild = readingBody.firstElementChild;
+			const childRect = readingBodyChild.getBoundingClientRect();
+
+			dom.this(contentRight).find('.reading-body').css({
+				height: childRect.height+'px',
+			});
+		}
 	}
 }
 
 // Zoom in
-function zoomIn(animation = true, center = false)
+function zoomIn(animation = true, center = false, delta = false)
 {
 	if(zoomMoveData.active)
 		return;
 
+	panels.removeAllMasks(true);
+
+	if(delta) // From MouseWheel event
+		delta = delta * (config.mouseWheelSensitivityInZoom / 10);
+	else
+		delta = 120 * (config.sensitivityInZoom / 10);
+
+	const multipler = 0.25 * (delta / 120);
+
 	if(currentScale < 8)
-		currentScale *= 1.25;
+		currentScale *= 1 + multipler;
 
 	applyScale(animation, currentScale, center);
 }
 
 // Zoom out
-function zoomOut(animation = true, center = false)
+function zoomOut(animation = true, center = false, delta = false)
 {
 	if(zoomMoveData.active)
 		return;
 
+	panels.removeAllMasks(true);
+
+	if(delta) // From MouseWheel event
+		delta = delta * (config.mouseWheelSensitivityInZoom / 10);
+	else
+		delta = 120 * (config.sensitivityInZoom / 10);
+
+	const multipler = 0.25 * (delta / 120);
+
 	if(currentScale > 0.2)
-		currentScale /= 1.25;
+		currentScale /= 1 + multipler;
 
 	applyScale(animation, currentScale, center, true);
 }
 
-
-// Reset zoom
-function resetZoom(animation = true, index = false, apply = true)
+function zoomUp(delta = config.zoomMoveStep, animation = false)
 {
-	var animationDurationS = ((animation) ? _config.readingViewSpeed : 0);
+	panels.removeAllMasks(true);
+	zoomMove(0, delta, animation);
+}
+
+function zoomDown(delta = config.zoomMoveStep, animation = false)
+{
+	panels.removeAllMasks(true);
+	zoomMove(0, -delta, animation);
+}
+
+function zoomLeft(delta = config.zoomMoveStep, animation = false)
+{
+	panels.removeAllMasks(true);
+	zoomMove(-delta, 0, animation);
+}
+
+function zoomRight(delta = config.zoomMoveStep, animation = false)
+{
+	panels.removeAllMasks(true);
+	zoomMove(delta, 0, animation);
+}
+
+function zoomMove(x = 0, y = 0, animation = false)
+{
+	if(!haveZoom) return;
+
+	dragZoom(x, y, animation);
+	dragZoomEnd(true);
+}
+
+// If the image original size scale corresponds to the current scale, mark it as original size
+function setOriginalSize(currentScale)
+{
+	if(currentScale === 1 && _config.readingNotEnlargeMoreThanOriginalSize)
+		return;
+
+	const contentRight = template._contentRight();
+	const images = contentRight.querySelectorAll('.r-img oc-img');
+
+	for(let i = 0, len = images.length; i < len; i++)
+	{
+		const ocImg = images[i];
+		const img = ocImg.querySelector('img');
+
+		if(!img)
+			continue;
+
+		const devicePixelRatio = window.devicePixelRatio;
+
+		const index = +img.dataset.index;
+		const image = ai.size(imagesData[index]) || [];
+
+		const width = +ocImg.dataset.width;
+		const height = +ocImg.dataset.height;
+
+		const scale = ((image.width / width + image.height / height) / 2) / devicePixelRatio;
+
+		if(scale === currentScale)
+			img.classList.add('zoomOriginalSize');
+		else
+			img.classList.remove('zoomOriginalSize');
+	}
+}
+
+// Reset zoom or show in original size if is current in 1 scale
+function resetZoom(animation = true, apply = true, center = true, delayed = false)
+{
+	panels.removeAllMasks(true);
 
 	currentScale = 1;
 
-	if(apply)
+	if(!apply)
 	{
-		if(config.readingGlobalZoom && readingViewIs('scroll'))
-		{
-			applyScale(animation, currentScale, true);
-		}
-		else
-		{
-			template.contentRight('.image-position'+currentZoomIndex).css({
-				transition: 'transform '+animationDurationS+'s, z-index '+animationDurationS+'s',
-				transform: 'translateX(0px) translateY(0px) scale('+currentScale+')',
-				transformOrigin: 'center center',
-				zIndex: 1,
-				height: '',
-				willChange: '',
-			});
+		resetZoomState();
+		return;
+	}
 
-			originalRect = false;
-			scalePrevData = {tranX: 0, tranX2: 0, tranY: 0, tranY2: 0, scale: 1, scrollTop: 0};
-			haveZoom = false;
-			zoomMoveData.active = false;
-			currentZoomIndex = false;
+	if(readingGlobalZoom() && readingViewIs('scroll'))
+	{
+		applyScale(animation, currentScale, true);
+	}
+	else
+	{
+		applyScale(animation, currentScale, true, false, delayed);
 
-			readingRender.setScale(1, (config.readingGlobalZoom && readingViewIs('scroll')), _config.readingDoublePage);
+		originalRect = false;
+		scalePrevData = {tranX: 0, tranX2: 0, tranY: 0, tranY2: 0, scale: 1, scrollTop: 0};
+		haveZoom = false;
+		zoomMoveData.active = false;
+		currentZoomIndex = false;
+
+		render.setScale(1, ((readingGlobalZoom() && readingViewIs('scroll')) || (readingGlobalZoomSlide() && !readingViewIs('scroll'))), doublePage.active());
+	}
+}
+
+function zoomToOriginalSize(animation = true, apply = true, center = true)
+{
+	panels.removeAllMasks(true);
+
+	let _image = contextMenu.getCurrentImage(false, false);
+	if(_image.folder || _image.blank) _image = contextMenu.getCurrentImage(false, false, 1) || false;
+
+	if(_image && !_image.folder && !_image.blank)
+	{
+		const contentRight = template._contentRight();
+
+		const image = ai.size(_image) || [];
+		const img = contentRight.querySelector('.r-img-i'+_image.index+' oc-img');
+
+		if(img)
+		{
+			if(zoomMoveData.active)
+				return;
+
+			const devicePixelRatio = window.devicePixelRatio;
+
+			const width = +img.dataset.width;
+			const height = +img.dataset.height;
+
+			currentScale = ((image.width / width + image.height / height) / 2) / devicePixelRatio;
+
+			if(apply)
+				applyScale(animation, currentScale, center, (currentScale < 1) ? true : false);
+			else
+				setOriginalSize(currentScale);
+
+			return;
 		}
 	}
 }
 
-// Drag zoom
-function dragZoom(x, y)
+function zoomToPrevZoom(animation = true, apply = true, center = true)
 {
-	x = scalePrevData.tranX2 + x;
-	y = scalePrevData.tranY2 + y;
+	panels.removeAllMasks(true);
 
-	let maxX = originalRect.width * 0.5 * scalePrevData.scale - originalRect.width * 0.5;
-	let minX = originalRect.width * -0.5 * scalePrevData.scale - originalRect.width * -0.5;
+	currentScale = config.readingPrevZoom;
+
+	if(apply)
+		applyScale(animation, currentScale, center, (currentScale < 1) ? true : false);
+	else
+		setOriginalSize(currentScale);
+}
+
+function resetZoomOrOriginalSize(animation = true, apply = true, center = true)
+{
+	if(currentScale == 1)
+		zoomToOriginalSize(animation, apply, center);
+	else
+		resetZoom(animation, apply, center);
+}
+function resetZoomOrPrevZoom(animation = true, apply = true, center = true)
+{
+	if(currentScale == 1)
+		zoomToPrevZoom(animation, apply, center);
+	else
+		resetZoom(animation, apply, center);
+}
+
+function resetZoomOrButtonConfig(animation = true, apply = true, center = true)
+{
+	if(config.readingResetZoomButtonToPrevZoom)
+		resetZoomOrPrevZoom(animation, apply, center);
+	else
+		resetZoomOrOriginalSize(animation, apply, center);
+}
+
+function startWithPrevZoom(animation = true, apply = true, center = true)
+{
+	console.log('startWithPrevZoom called', config.readingStartPrevZoom, config.readingStartWithPrevZoom, restoringTabState);
+
+	if(!config.readingStartWithPrevZoom || restoringTabState || config.readingStartPrevZoom === 1)
+		return;
+
+	console.log('readingStartPrevZoom:', config.readingStartPrevZoom);
+
+	const scale = config.readingStartPrevZoom;
+
+	applyScale(false, scale, true, (scale < 1) ? true : false);
+	currentScale = scale;
+
+	// Move image to top or bottom depending on reading direction and manga mode
+	const offset = !readingManga() ? 99999 : -99999;
+
+	if(config.readingMoveZoomWithMouse)
+		applyMoveZoomWithMouse();
+	else
+		zoomMove(0, readingDirection ? offset : -offset);
+}
+
+/*
+// Debug
+let registeredMutationObserver = false;
+
+function findMutation()
+{
+	if(registeredMutationObserver)
+		return;
+
+	const element = document.querySelector('.r-img-i113 img');
+	if(!element)
+		return;
+
+	clearInterval(intervalId);
+
+	registeredMutationObserver = true;
+
+	const observer = new MutationObserver(mutations =>
+	{
+		console.group('[DOM modification]');
+
+		console.trace('Call stack del observer');
+
+		for(const mutation of mutations)
+		{
+			console.log({
+				type: mutation.type,
+				target: mutation.target,
+				attribute: mutation.attributeName,
+				oldValue: mutation.oldValue,
+				class: mutation.target.className,
+				style: mutation.target.getAttribute('style'),
+			});
+		}
+
+		console.groupEnd();
+	});
+
+	observer.observe(element, {
+		attributes: true,
+		attributeOldValue: true,
+		childList: true,
+		subtree: true
+	});
+}
+
+const intervalId = setInterval(findMutation, 1);
+*/
+
+// Fix blur on zoom cause by tranform scale, TODO: It is still possible that it may not work well in some cases.
+function fixBlurOnZoom(scale = 1, index = false)
+{
+	const inverseScale = 1 / scale;
+	const scaleIncrease = scale - 1;
+
+	const contentRight = template._contentRight();
+	const images = index !== false ? contentRight.querySelectorAll('.image-position'+index+' oc-img img') : contentRight.querySelectorAll('.r-img oc-img img');
+	
+	const scrollTop = dom.getContentRightScrollTop();
+	const isScroll = readingViewIs('scroll');
+	const viewSize = view.viewSize(isScroll);
+
+	const dpr = window.devicePixelRatio;
+	const inverseDPR = 1 / dpr;
+
+	const viewDPR = {
+		top: viewSize.top * dpr,
+		left: viewSize.left * dpr,
+		height: viewSize.height * dpr,
+		width: viewSize.width * dpr,
+	};
+
+	const halfHeight = viewDPR.height / 2;
+	const halfWidth = viewDPR.width / 2;
+
+	for(let i = 0, len = images.length; i < len; i++)
+	{
+		const img = images[i];
+		const image = imagesData[+img.dataset.index] || [];
+
+		const rendered = image.rendered;
+		const position = view.imagesFullPosition[image.distribution.key1][image.distribution.key2] ?? [];
+		const original = position.original;
+
+		const renderedDPR = {
+			top: rendered.top * dpr,
+			// left: rendered.left * dpr,
+		};
+
+		const originalDPR = {
+			top: original.top * dpr,
+			left: original.left * dpr,
+		};
+
+		const imageEdges = {
+			top: originalDPR.top + renderedDPR.top + viewDPR.top,
+			left: originalDPR.left + viewDPR.left,
+		};
+
+		// Round, Even if the image isn't actually centered on a physical pixel, Chrome will center it as long as there is no transform applied.
+		const imageEdgesRound = {
+			top: Math.round(imageEdges.top),
+			left: Math.round(imageEdges.left),
+		};
+		
+		const transformOrigin = {
+			top: viewDPR.top + (isScroll ? 0 : halfHeight),
+			left: viewDPR.left + halfWidth,
+		};
+
+		const displacementFromOrigin = {
+			top: (transformOrigin.top - imageEdges.top) * scaleIncrease,
+			left: (transformOrigin.left - imageEdges.left) * scaleIncrease,
+		};
+
+		let left = ((imageEdgesRound.left - displacementFromOrigin.left) % 1);
+		let top = ((imageEdgesRound.top - displacementFromOrigin.top) % 1);
+
+		left = -(left);
+		top = -(top);
+
+		left /= dpr;
+		top /= dpr;
+
+		if(left <= -0.5) left += inverseDPR;
+		else if(left > 0.5) left -= inverseDPR;
+
+		if(top <= -0.5) top += inverseDPR;
+		else if(top > 0.5) top -= inverseDPR;
+
+		const ocImg = img.parentElement;
+
+		let width, height;
+
+		width = +ocImg.dataset.width;
+		height = +ocImg.dataset.height;
+
+		width = Math.round(width * scale * dpr);
+		height = Math.round(height * scale * dpr);
+
+		const rotated = image?.rotated == 1 || image?.rotated == 2;
+		if(rotated) [width, height] = [height, width];
+
+		img.style.width = (width / dpr)+'px';
+		img.style.height = (height / dpr)+'px';
+		img.style.transform = 'scale('+inverseScale+') '+rotateImage(image?.rotated, left, top);
+	}
+}
+
+function getIndexImagesSize(index)
+{
+	let contentRight = template._contentRight();
+
+	let width = 0;
+	let height = 0;
+
+	let images = contentRight.querySelectorAll('.reading-body .image-position'+index+' .r-img > *');
+
+	let len = images.length;
+
+	if(len == 1)
+		width += readingMargin().left * 2;
+
+	for(let i = 0; i < len; i++)
+	{
+		let img = images[i];
+
+		width += +img.dataset.width;
+
+		if(i > 0)
+		{
+			if(i == 1)
+				width += +img.dataset.left * 3;
+			else
+				width += +img.dataset.left;
+		}
+
+		let _height = +img.dataset.height + (readingMargin().top * 2);
+
+		if(_height > height) height = _height;
+	}
+
+	return {
+		width: width,
+		height: height,
+	};
+}
+
+function notCrossZoomLimits(x, y, scale = false, crossZoomLimits = false)
+{
+	scale = scale !== false ? scale : scalePrevData.scale;
+
+	let indexSize = getIndexImagesSize((readingGlobalZoom() && readingViewIs('scroll')) ? (currentIndex - 1) : currentZoomIndex);
+
+	let maxX = indexSize.width * 0.5 * scale - originalRect.width * 0.5;
+	let minX = indexSize.width * -0.5 * scale - originalRect.width * -0.5;
+
+	if(maxX < 0) maxX = 0;
+	if(minX > 0) minX = 0;
 
 	let maxDiff = readingViewIs('scroll') ? ((originalRect.top + originalRect.height) - (originalRectReadingBody.top + originalRectReadingBody.height)) : 0;
 	let minDiff = readingViewIs('scroll') ? (originalRect.top - originalRectReadingBody.top) : 0;
 
-	let maxY = (originalRect.height * 0.5 * scalePrevData.scale - originalRect.height * 0.5) - (minDiff < 0 ? minDiff : 0);
-	let minY = (originalRect.height * -0.5 * scalePrevData.scale - originalRect.height * -0.5) - (maxDiff > 0 ? maxDiff + _config.readingMargin.top : 0);
+	let maxY = (indexSize.height * 0.5 * scale - originalRect.height * 0.5) - (minDiff < 0 ? minDiff : 0);
+	let minY = (indexSize.height * -0.5 * scale - originalRect.height * -0.5) - (maxDiff > 0 ? maxDiff + readingMargin().top : 0);
+
+	if(crossZoomLimits)
+		return {x: x, y: y, maxX: maxX, maxY: maxY, height: indexSize.height, width: indexSize.width};
+
+	if(maxY < 0) maxY = 0;
+	if(minY > 0) minY = 0;
 
 	if(x > maxX)
 		x = maxX;
@@ -1501,15 +2154,39 @@ function dragZoom(x, y)
 	else if(y < minY)
 		y = minY;
 
-	if(config.readingGlobalZoom && readingViewIs('scroll'))
+	return {x: x, y: y, maxX: maxX, maxY: maxY, height: indexSize.height, width: indexSize.width};
+}
+
+// Drag zoom
+function dragZoom(dx, dy, animation = false)
+{
+	return applyZoom(scalePrevData.tranX2 + dx, scalePrevData.tranY2 + dy, animation);
+}
+
+function applyZoom(x, y, animation, crossZoomLimits = false)
+{
+	const transition = app.scrollTransition('dragZoom', animation ? _config.readingViewSpeed : 0);
+	const withLimits = notCrossZoomLimits(x, y, crossZoomLimits);
+
+	const diff = {
+		x: x - withLimits.x,
+		y: y - withLimits.y,
+	};
+
+	x = withLimits.x;
+	y = withLimits.y;
+
+	const contentRight = template._contentRight();
+
+	if(readingGlobalZoom() && readingViewIs('scroll'))
 	{
 		scalePrevData.tranX = zoomMoveData.tranX = x;
 		zoomMoveData.tranY = scalePrevData.tranY;
 
-		template.contentRight('.reading-body > div').css({
-			transition: 'transform 0s, z-index 0s',
-			transform: 'translateX('+(x)+'px) translateY('+scalePrevData.tranY+'px) scale('+scalePrevData.scale+')',
-			transformOrigin: 'center center',
+		dom.this(contentRight).find('.reading-body > div').css({
+			transition: `transform ${transition.speed}s ${transition.function}, z-index 0s`,
+			transform: `translateX(${app.roundDPR(x)}px) translateY(${app.roundDPR(scalePrevData.tranY)}px) scale(${scalePrevData.scale})`,
+			transformOrigin: 'top center',
 		});
 	}
 	else
@@ -1517,17 +2194,20 @@ function dragZoom(x, y)
 		zoomMoveData.tranX = x;
 		zoomMoveData.tranY = y;
 
-		template.contentRight('.image-position'+currentZoomIndex).css({
-			transition: 'transform 0s, z-index 0s',
-			transform: 'translateX('+(x)+'px) translateY('+(y)+'px) scale('+scalePrevData.scale+')',
+		dom.this(contentRight).find('.image-position'+currentZoomIndex, true).css({
+			transition: `transform ${transition.speed}s ${transition.function}, z-index 0s`,
+			transform: `translateX(${app.roundDPR(x)}px) translateY(${app.roundDPR(y)}px) scale(${scalePrevData.scale})`,
 			transformOrigin: 'center center',
 		});
 	}
+
+	return diff;
 }
 
-function dragZoomEnd()
+
+function dragZoomEnd(force = false)
 {
-	if(zoomMoveData.active)
+	if(zoomMoveData.active || force)
 	{
 		if(typeof zoomMoveData.tranX !== 'undefined')
 		{
@@ -1539,41 +2219,213 @@ function dragZoomEnd()
 	}
 }
 
+function getTabState()
+{
+	const content = template._contentRight().firstElementChild;
+	const data = {
+		scaleData: {...scalePrevData},
+		scrollTop: readingViewIs('scroll') && content ? content.scrollTop : undefined,
+		window: {
+			width: window.innerWidth,
+			height: window.innerHeight,
+		}
+	};
+
+	return data;
+}
+
+let restoringTabState = false;
+
+function stateScrollTop(data)
+{
+	const width = window.innerWidth;
+	const height = window.innerHeight;
+
+	// Avoid restore scrollTop if the window size has changed
+	// TODO: Consider using stayInLine to solve this
+	const windowChangedSize = data?.window?.width !== width || data?.window?.height !== height;
+
+	const scrollTop = data?.scrollTop;
+	const hasScrollTop = Number.isFinite(scrollTop);
+	const restoreScrollTop = hasScrollTop && readingViewIs('scroll') && !windowChangedSize ? scrollTop : false;
+
+	console.log(data);
+
+	return {
+		restoreScrollTop,
+		hasScrollTop,
+		scrollTop,
+	};
+}
+
+async function setTabState(data)
+{
+	const scaleData = data?.scaleData ?? false;
+	const {restoreScrollTop, hasScrollTop, scrollTop} = stateScrollTop(data);
+
+	if((scaleData && scaleData.scale !== 1) || hasScrollTop)
+	{
+		await onLoadPromise.promise;
+
+		if(scaleData && scaleData.scale !== 1)
+		{
+			applyScale(false, scaleData.scale, true, (scaleData.scale < 1) ? true : false, false, {restoreScrollTop});
+			applyZoom(scaleData.tranX, scaleData.tranY, false);
+
+			scalePrevData.tranX = scalePrevData.tranX2 = zoomMoveData.tranX;
+
+			if(!(readingGlobalZoom() && readingViewIs('scroll')))
+				scalePrevData.tranY = scalePrevData.tranY2 = zoomMoveData.tranY;
+			
+			currentScale = scaleData.scale;
+		}
+
+		if(restoreScrollTop !== false)
+		{
+			console.log('restoreScrollTop', restoreScrollTop);
+			template._contentRight().firstElementChild.scrollTop = restoreScrollTop;
+		}
+	}
+
+	restoringTabState = false;
+}
+
+async function setTabStateFirst(data)
+{
+	const {restoreScrollTop, hasScrollTop, scrollTop} = stateScrollTop(data);
+
+	restoringTabState = {
+		...data,
+		restoreScrollTop,
+	} ?? false;
+}
+
+// Move scroll whit mouse
+var scrollWithMouseStatus = {};
+
+function startScrollWithMouse()
+{
+	if(config.readingScrollWithMouse)
+	{
+		let content = template._contentRight().firstElementChild;
+		let rect = template._barHeader().getBoundingClientRect();
+
+		scrollWithMouseStatus = {
+			active: true,
+			content: content,
+			scrollTop: content.scrollTop,
+			headerHeight: rect.height + rect.top,
+		};
+
+		scrollWithMouse();
+	}
+	else
+	{
+		scrollWithMouseStatus = {};
+	}
+}
+
+function scrollWithMouse()
+{
+	if(!scrollWithMouseStatus.active) return;
+
+	if(onReading && isLoaded && readingViewIs('scroll') && !events.dialogOrMenuActive())
+	{
+		let contentScrollTop = scrollWithMouseStatus.content.scrollTop;
+		let scrollTop = scrollWithMouseStatus.scrollTop;
+
+		if(Math.abs(contentScrollTop - scrollTop) > 5)
+			scrollTop = contentScrollTop;
+
+		let pageY = currentMousePosition.pageY;
+		let pageX = currentMousePosition.pageX;
+
+		let height = window.innerHeight;
+		let zone = height / 4;
+
+		let width = window.innerWidth;
+		let zoneWidth = width / 4;
+
+		let offset = 0;
+
+		if(pageY < zone)
+			offset = pageY - zone;
+		else if(pageY > height - zone)
+			offset = pageY - (height - zone);
+
+		offset = offset / zone * 15;
+
+		console.log(offset);
+
+		if(offset != 0 && pageY > scrollWithMouseStatus.headerHeight && pageX > zoneWidth && pageX < width - zoneWidth && isMouseenter.document)
+		{
+			let scrollHeight = scrollWithMouseStatus.content.scrollHeight;
+			scrollTop = scrollTop + offset;
+
+			if(scrollTop < 0)
+				scrollTop = 0;
+			else if(scrollTop > scrollHeight)
+				scrollTop = scrollHeight;
+
+			scrollWithMouseStatus.scrollTop = scrollTop;
+			scrollWithMouseStatus.content.scrollTop = scrollTop;
+
+			reading.scrollNextOrPrevComic(offset < 0, true);
+		}
+	}
+
+	window.requestAnimationFrame(scrollWithMouse);
+}
+
+function rotateImage(rotated = false, x = 0, y = 0)
+{
+	if(rotated == 3)
+		return 'rotate(180deg) translate(calc(-100% + '+x+'px), calc(-100% + '+y+'px))';
+	else if(rotated)
+		return 'rotate('+(rotated == 1 ? '-' : '')+'90deg) '+(rotated == 1 ? 'translate(calc(-100% + '+x+'px), '+y+'px)' : 'translate('+x+'px, calc(-100% + '+y+'px))');
+	else if(x || y)
+		return 'translate('+x+'px, '+y+'px)';
+
+	return '';
+}
+
 //Turn the magnifying glass on and off
-function activeMagnifyingGlass(active = null, gamepad = false)
+function activeMagnifyingGlass(active = null, gamepad = false, fromSwitch = false)
 {
 	// Toggle magnifying glass
 	if(active === null) active = !config.readingMagnifyingGlass;
 
 	if(active)
 	{
-		storage.updateVar('config', 'readingMagnifyingGlass', true);
-		readingRender.setMagnifyingGlassStatus(config.readingMagnifyingGlassZoom);
-	
+		storage.setKey('config', 'readingMagnifyingGlass', true);
+		render.setMagnifyingGlassStatus(config.readingMagnifyingGlassZoom, doublePage.active());
+
 		if(gamepad)
 		{
-			let contentRight = template._contentRight();
-			let rect = contentRight.getBoundingClientRect();
+			const rect = getViewportRect();
 
 			let pageX = (rect.width / 2) + rect.left;
 			let pageY = (rect.height / 2) + rect.top;
 
 			magnifyingGlassControl(1, {pageX: pageX, pageY: pageY, originalEvent: {touches: false}});
 		}
+		else if(pointermoveEvent && !fromSwitch)
+		{
+			magnifyingGlassControl(1, pointermoveEvent);
+		}
 	}
 	else
 	{
-		storage.updateVar('config', 'readingMagnifyingGlass', false);
+		storage.setKey('config', 'readingMagnifyingGlass', false);
 		magnifyingGlassControl(0);
-		readingRender.setMagnifyingGlassStatus(false);
+		render.setMagnifyingGlassStatus(false);
 	}
 }
 
 //Magnifying glass settings
 function changeMagnifyingGlass(mode, value, save)
 {
-	let contentRight = template._contentRight();
-	let rect = contentRight.getBoundingClientRect();
+	const rect = getViewportRect();
 
 	let pageX = (rect.width / 2) + rect.left;
 	let pageY = (rect.height / 2) + rect.top;
@@ -1582,84 +2434,90 @@ function changeMagnifyingGlass(mode, value, save)
 	{
 		magnifyingGlassControl(1, {pageX: pageX, pageY: pageY, originalEvent: {touches: false}}, {zoom: value});
 
-		if(save) storage.updateVar('config', 'readingMagnifyingGlassZoom', value);
+		if(save) storage.setKey('config', 'readingMagnifyingGlassZoom', value);
 
-		readingRender.setScaleMagnifyingGlass(value);
+		render.setScaleMagnifyingGlass(value, doublePage.active());
 	}
 	else if(mode == 2) //Set the size
 	{
 		magnifyingGlassControl(1, {pageX: pageX, pageY: pageY, originalEvent: {touches: false}}, {size: value});
 
-		if(save) storage.updateVar('config', 'readingMagnifyingGlassSize', value);
+		if(save) storage.setKey('config', 'readingMagnifyingGlassSize', value);
 	}
 	else if(mode == 3) //Set the ratio
 	{
 		magnifyingGlassControl(1, {pageX: pageX, pageY: pageY, originalEvent: {touches: false}}, {ratio: value});
 
-		if(save) storage.updateVar('config', 'readingMagnifyingGlassRatio', value);
+		if(save) storage.setKey('config', 'readingMagnifyingGlassRatio', value);
 	}
 	else if(mode == 4) //Set the radius
 	{
 		magnifyingGlassControl(1, {pageX: pageX, pageY: pageY, originalEvent: {touches: false}}, {radius: value});
 
-		if(save) storage.updateVar('config', 'readingMagnifyingGlassRadius', value);
+		if(save) storage.setKey('config', 'readingMagnifyingGlassRadius', value);
 	}
 }
 
-var magnifyingGlassView = false, magnifyingGlassPosition = {x: false, y: false};
+var magnifyingGlassView = false, magnifyingGlassPosition = {x: false, y: false, mode: false};
+
+function magnifyingGlassControlPrev()
+{
+	if(magnifyingGlassPosition.mode !== false)
+		magnifyingGlassControl(magnifyingGlassPosition.mode, {pageX: magnifyingGlassPosition.x, pageY: magnifyingGlassPosition.y, originalEvent: {touches: false}});
+}
 
 //Magnifying glass control
-function magnifyingGlassControl(mode, e = false, lensData = false)
+var magnifyingGlassControlST = false, prevMagnifyingGlassControlRect = false;
+
+function magnifyingGlassControl(mode, event = false, lensData = false)
 {
-	if(e)
+	let x = 0, y = 0;
+
+	if(event)
 	{
-		var x = e.originalEvent.touches ? e.originalEvent.touches[0].pageX : (e.pageX || !e.clientX ? e.pageX : e.clientX);
-		var y = e.originalEvent.touches ? e.originalEvent.touches[0].pageY : (e.pageY || !e.clientY ? e.pageY : e.clientY);
+		const originalEvent = event.originalEvent || event;
+
+		x = originalEvent.touches ? originalEvent.touches[0].pageX : (event.pageX || !event.clientX ? event.pageX : event.clientX);
+		y = originalEvent.touches ? originalEvent.touches[0].pageY : (event.pageY || !event.clientY ? event.pageY : event.clientY);
 	}
+
+	let contentRight = template._contentRight();
 
 	if(mode == 1)
 	{
-		if(lensData && typeof lensData.ratio != 'undefined')
-			var ratio = 1 / lensData.ratio;
-		else
-			var ratio = 1 / config.readingMagnifyingGlassRatio;
+		if(mode !== magnifyingGlassPosition.mode)
+			clearTimeout(magnifyingGlassControlST);
 
-		if(lensData && typeof lensData.size != 'undefined')
-		{
-			var lensWidth = lensData.size;
-			var lensHeight = parseInt(lensData.size * ratio);
-		}
-		else
-		{
-			var lensWidth = config.readingMagnifyingGlassSize;
-			var lensHeight = parseInt(config.readingMagnifyingGlassSize * ratio);
-		}
+		let ratio = lensData?.ratio ? lensData.ratio : config.readingMagnifyingGlassRatio;
+		let zoom = lensData?.zoom ? lensData.zoom : config.readingMagnifyingGlassZoom;
+		let lensWidth = lensData?.size ? lensData.size : config.readingMagnifyingGlassSize;
+		let lensHeight = Math.round(lensWidth * ratio);
 
-		if(lensData && typeof lensData.zoom != 'undefined')
-			var zoom = lensData.zoom;
-		else
-			var zoom = config.readingMagnifyingGlassZoom;
+		let lensHeightM = Math.round(lensHeight / 2);
+		let lensWidthM = Math.round(lensWidth / 2);
 
-		var lensHeightM = parseInt(lensHeight / 2);
-		var lensWidthM = parseInt(lensWidth / 2);
+		let top = (y - lensHeightM);
+		let left = (x - (lensWidth / 2));
 
-		var top = (y - lensHeightM);
-		var left = (x - (lensWidth / 2));
+		let rect = showComicSkip !== false && prevMagnifyingGlassControlRect ? prevMagnifyingGlassControlRect : contentRight.querySelector('.reading-body').getBoundingClientRect();
+		prevMagnifyingGlassControlRect = rect;
 
-		var offset = template.contentRight('.reading-body').offset();
+		let topLens = y - rect.top - (lensHeightM / zoom);
+		let leftLens = x - rect.left - lensWidthM;
 
-		var topLens = y - offset.top - (lensHeightM / zoom);
-		var leftLens = x - offset.left - lensWidthM;
+		dom.this(contentRight).find('.reading-lens').css({
+			display: 'block',
+			contentVisibility: 'visible',
+			transform: 'translate('+left+'px, '+top+'px)',
+			width: lensWidth+'px',
+			height: lensHeight+'px',
+			borderRadius: ((lensData && typeof lensData.radius != 'undefined') ? lensData.radius : config.readingMagnifyingGlassRadius)+'px'
+		}).removeClass('d', 'h').addClass('a');
 
-		template.contentRight('.reading-lens').css({
-			'transform': 'translate('+left+'px, '+top+'px)',
-			'width': lensWidth+'px',
-			'height': lensHeight+'px',
-			'border-radius': ((lensData && typeof lensData.radius != 'undefined') ? lensData.radius : config.readingMagnifyingGlassRadius)+'px'
-		}).removeClass('d h').addClass('a');
-
-		template.contentRight('.reading-lens > div').css({
-			'transform': ' scale('+zoom+') translate(' + (-(leftLens)) + 'px, ' + (-(topLens)) + 'px)'
+		dom.this(contentRight).find('.reading-lens > div').css({
+			transform: 'scale('+zoom+') translate(' + (-(leftLens)) + 'px, ' + (-(topLens)) + 'px)',
+			transformOrigin: '',
+			transition: '',
 		});
 
 		magnifyingGlassView = true;
@@ -1667,126 +2525,307 @@ function magnifyingGlassControl(mode, e = false, lensData = false)
 		magnifyingGlassPosition = {
 			x: x,
 			y: y,
+			mode: mode,
 		};
+
+		contentRight.style.cursor = 'none';
 	}
 	else
 	{
-		template.contentRight('.reading-lens').removeClass('a').addClass('d');
+		if(mode !== magnifyingGlassPosition.mode)
+		{
+			magnifyingGlassControlST = setTimeout(function(){
+
+				dom.this(contentRight).find('.reading-lens').css({display: 'none', contentVisibility: 'hidden'});
+
+			}, 300);
+		}
+
+		dom.this(contentRight).find('.reading-lens').removeClass('a').addClass('d');
 		magnifyingGlassView = false;
+		magnifyingGlassPosition.mode = mode;
+
+		contentRight.style.cursor = '';
 	}
 
-	//calculateView();
+	//view.calculateView();
 }
 
-function resizedWindow()
+let resizeAfterLoad = false;
+
+function resized()
 {
-	if(onReading)
-	{
-		disposeImages();
-		calculateView();
-		stayInLine();
+    if(onLoadPromise)
+    {
+        if(resizeAfterLoad)
+            return;
 
-		readingRender.resized(_config.readingDoublePage);
+        resizeAfterLoad = onLoadPromise.promise.then(function(){
+            resizeAfterLoad = false;
+            resized();
+        });
+
+        return;
+    }
+
+	originalRect = false;
+	originalRectReadingBody = false;
+	originalRect2 = false;
+	originalRectReadingBody2 = false;
+	contentRightRect = false;
+
+	if((onReading || _onReading) && isLoaded)
+	{
+		if(!readingIsEbook)
+		{
+			view.disposeImages();
+			view.calculateView();
+			zoomScrollHeight();
+			view.stayInLine.recalculate(true);
+		}
+
+		render.resized(doublePage.active());
+		fastUpdateEbookPages(false, true);
+		generateEbookPagesDelayed();
+		hideMouseInFullscreen();
+		setOriginalSize(currentScale);
 	}
 
-	previousContentHeight = template.contentRight().children('div').children('div').height();
+	// view.stayInLine.getPreviusContentSize();
 }
 
-var hiddenContentLeft = false, hiddenBarHeader = false, hideContentDisableTransitionsST = false, hideContentST = false, hideContentRunningST = false, shownContentLeft = false, shownBarHeader = false;
+var hiddenContentLeft = false, hiddenBarHeader = false, hiddenTabsBar = false, hideContentDisableTransitionsST = false, hideContentST = false, hideContentRunningST = false, shownContentLeft = false, shownBarHeader = false;
+
+let hideWindowButtonsAnimating = false;
+
+function hideWindowButtons(hide = false, animation = false)
+{
+	const win = electronRemote.getCurrentWindow();
+	const date = Date.now() - (1000 / 120); // Start in prev frame to avoid delay
+
+	const fullHide = hiddenBarHeader && hiddenTabsBar;
+	hide = fullHide && hide;
+
+	// const computedStyle = getComputedStyle(document.querySelector('.app'));
+	// const symbolColor = computedStyle.getPropertyValue('--md-sys-color-on-surface-variant').trim() || '#7F7F7F';
+	const symbolColor = titleBar.colors.symbolColor;
+	const color = app.hexToRgb(symbolColor);
+
+	const _animate = function() {
+
+		const duration = 200;
+		const elapsed = Date.now() - date;
+		const progress = Math.min(elapsed / duration, 1);
+
+		const value = animate.value({
+			progress,
+			from: 0,
+			to: 1,
+			bezier: 'ease',
+		});
+
+		setWindowButtons(win, hide ? (1 - value) : value, color);
+
+		if(elapsed < duration)
+		{
+			window.requestAnimationFrame(_animate);
+		}
+		else
+		{
+			setWindowButtons(win, hide ? 0 : 1, color);
+			hideWindowButtonsAnimating = false;
+		}
+	}
+
+	if(animation && fullHide)
+	{
+		if(hideWindowButtonsAnimating) return;
+		hideWindowButtonsAnimating = true;
+		_animate();
+	}
+	else
+	{
+		setWindowButtons(win, hide ? 0 : 1, color);
+	}
+}
+
+function setWindowButtons(win, progress = 0, color = {r: 0, g: 0, b: 0})
+{
+	const calculate = function(from, to) {
+
+		const value = Math.round(from + ((to - from) * progress));
+		return Math.max(from, Math.min(to, value));
+
+	}
+
+	if(process.platform == 'darwin')
+	{
+		win.setWindowButtonPosition({
+			x: 13,
+			y: calculate(-92, 13),
+		});
+	}
+	else
+	{
+		const min = process.platform == 'win32' ? 24 : -65;
+
+		const overlay = {
+			height: calculate(min, 40) || -1, // Avoid 0 because shows the buttons in Linux
+		};
+
+		if(process.platform == 'win32')
+			overlay.symbolColor = `rgba(${color.r}, ${color.g}, ${color.b}, ${calculate(0, 1)})`;
+
+		win.setTitleBarOverlay(overlay);
+	}
+}
+
+function getHideContent(fullScreen = undefined)
+{
+	fullScreen = fullScreen ?? isFullScreen;
+
+	let _hideContentLeft = false;
+	let _hideBarHeader = false;
+	let _hideTabsBar = false;
+
+	if(onReading && fullScreen)
+	{
+		_hideContentLeft = config.readingHideContentLeftFullScreen;
+		_hideBarHeader = config.readingHideBarHeaderFullScreen;
+		_hideTabsBar = config.readingHideTabsBarFullScreen;
+	}
+	else if(onReading)
+	{
+		_hideContentLeft = config.readingHideContentLeft;
+		_hideBarHeader = config.readingHideBarHeader;
+		_hideTabsBar = config.readingHideTabsBar;
+	}
+
+	return {
+		hideContentLeft: _hideContentLeft,
+		hideBarHeader: _hideBarHeader,
+		hideTabsBar: _hideTabsBar && (_hideBarHeader || fullScreen),
+	};
+}
 
 function hideContent(fullScreen = false, first = false)
 {
-	if(!onReading)
-	{
-		var _hideContentLeft = false;
-		var _hideBarHeader = false;
-	}
-	else if(fullScreen)
-	{
-		var _hideContentLeft = config.readingHideContentLeftFullScreen;
-		var _hideBarHeader = config.readingHideBarHeaderFullScreen;
-	}
-	else
-	{
-		var _hideContentLeft = config.readingHideContentLeft;
-		var _hideBarHeader = config.readingHideBarHeader;
-	}
+	const {hideContentLeft: _hideContentLeft, hideBarHeader: _hideBarHeader, hideTabsBar: _hideTabsBar} = getHideContent(fullScreen);
 
 	clearTimeout(hideContentDisableTransitionsST);
 
-	$('.bar-header, .content-left').css('transition', '0s');
+	const bars = dom.queryAll('.bar-header, .content-left, .tabs-bar');
+	bars.css({transition: '0s'});
 
-	hideContentDisableTransitionsST = setTimeout(function(){
+	hideContentDisableTransitionsST = setTimeout(function() {
 
-		$('.bar-header, .content-left').css('transition', '');
+		bars.css({transition: ''});
 
-	});
+	}, 10);
 
-	var app = $('.app');
+	const changed = (hiddenContentLeft != _hideContentLeft || hiddenBarHeader != _hideBarHeader || hiddenTabsBar != _hideTabsBar);
+
+	const app = document.querySelector('.app');
 
 	if(_hideContentLeft)
 	{
-		app.addClass('hide-content-left');
+		app.classList.add('hide-content-left');
 		hiddenContentLeft = true;
 	}
 	else
 	{
-		app.removeClass('hide-content-left');
-		$('.content-left').removeClass('show');
+		app.classList.remove('hide-content-left');
+		dom.query('.content-left').removeClass('show');
 		hiddenContentLeft = false;
 	}
 
 	if(_hideBarHeader)
 	{
-		app.addClass('hide-bar-header');
+		app.classList.add('hide-bar-header');
 		hiddenBarHeader = true;
 	}
 	else
 	{
-		app.removeClass('hide-bar-header');
-		$('.bar-header').removeClass('show');
+		app.classList.remove('hide-bar-header');
 		hiddenBarHeader = false;
 	}
 
-	if(!first && onReading)
-		resizedWindow();
+	if(_hideTabsBar)
+	{
+		app.classList.add('hide-tabs-bar');
+		hiddenTabsBar = true;
+	}
+	else
+	{
+		app.classList.remove('hide-tabs-bar');
+		hiddenTabsBar = false;
+	}
+
+	showHideHeader();
+	dom.this(template._contentRight()).find('.reading-progress').class(fullScreen ? config.readingShowPageNumberFullScreen : config.readingShowPageNumber, 'active');
+
+	if(changed && !first && onReading)
+		resized();
 }
 
 function hideBarHeader(value = null)
 {
-	let isFullScreen = electronRemote.getCurrentWindow().isFullScreen();
-
 	if(value === null) value = !(isFullScreen ? config.readingHideBarHeaderFullScreen : config.readingHideBarHeader);
 
+	dom.query('.menu-simple-hide-tabs-bar').class((!value && !isFullScreen), 'disable-pointer');
+
 	if(isFullScreen)
-		storage.updateVar('config', 'readingHideBarHeaderFullScreen', value);
+		storage.setKey('config', 'readingHideBarHeaderFullScreen', value);
 	else
-		storage.updateVar('config', 'readingHideBarHeader', value);
+		storage.setKey('config', 'readingHideBarHeader', value);
+
+	hideContent(isFullScreen);
+}
+
+function hideTabsBar(value = null)
+{
+	if(value === null) value = !(isFullScreen ? config.readingHideTabsBarFullScreen : config.readingHideTabsBar);
+
+	if(isFullScreen)
+		storage.setKey('config', 'readingHideTabsBarFullScreen', value);
+	else
+		storage.setKey('config', 'readingHideTabsBar', value);
 
 	hideContent(isFullScreen);
 }
 
 function hideContentLeft(value = null)
 {
-	let isFullScreen = electronRemote.getCurrentWindow().isFullScreen();
-
 	if(value === null) value = !(isFullScreen ? config.readingHideContentLeftFullScreen : config.readingHideContentLeft);
 
 	if(isFullScreen)
-		storage.updateVar('config', 'readingHideContentLeftFullScreen', value);
+		storage.setKey('config', 'readingHideContentLeftFullScreen', value);
 	else
-		storage.updateVar('config', 'readingHideContentLeft', value);
+		storage.setKey('config', 'readingHideContentLeft', value);
+
+	hideContent(isFullScreen);
+}
+
+function showPageNumber(value = null)
+{
+	if(value === null) value = !(isFullScreen ? config.readingShowPageNumberFullScreen : config.readingShowPageNumber);
+
+	if(isFullScreen)
+		storage.setKey('config', 'readingShowPageNumberFullScreen', value);
+	else
+		storage.setKey('config', 'readingShowPageNumber', value);
 
 	hideContent(isFullScreen);
 }
 
 function loadReadingMoreOptions()
 {
-	var isFullScreen = electronRemote.getCurrentWindow().isFullScreen();
-
 	handlebarsContext.hideContent = {
 		barHeader: isFullScreen ? config.readingHideBarHeaderFullScreen : config.readingHideBarHeader,
+		tabsBar: isFullScreen ? config.readingHideTabsBarFullScreen : config.readingHideTabsBar,
 		contentLeft: isFullScreen ? config.readingHideContentLeftFullScreen : config.readingHideContentLeft,
+		showPageNumber: isFullScreen ? config.readingShowPageNumberFullScreen : config.readingShowPageNumber,
+		isFullScreen: isFullScreen,
 	};
 
 	$('#reading-more-options .menu-simple').html(template.load('reading.elements.menus.more.options.html'));
@@ -1796,13 +2835,36 @@ function loadReadingMoreOptions()
 
 function readingViewIs(value)
 {
-	if(value == 'scroll' && _config.readingWebtoon)
+	if(value == 'scroll' && (_config.readingWebtoon || _config.readingView == 'panels'))
 		return true;
 
-	if(_config.readingView == value && !_config.readingWebtoon)
+	if((_config.readingView == value || (value == 'compact' && _config.readingView != 'scroll' && _config.readingView != 'slide' && _config.readingView != 'panels')) && !_config.readingWebtoon)
 		return true;
 
 	return false;
+}
+
+function readingView()
+{
+	if(_config.readingWebtoon)
+		return 'scroll';
+
+	return _config.readingView;
+}
+
+function readingManga()
+{
+	return (_config.readingManga && !readingViewIs('scroll'));
+}
+
+function readingGlobalZoom()
+{
+	return config.readingGlobalZoom || readingViewIs('panels');
+}
+
+function readingGlobalZoomSlide()
+{
+	return config.readingGlobalZoomSlide;
 }
 
 var activeOnScroll = true;
@@ -1810,10 +2872,14 @@ var activeOnScroll = true;
 function disableOnScroll(disable = true)
 {
 	activeOnScroll = !disable;
+	if(!disable) view.stayInLine.getPreviusContentSize();
 }
 
 function setReadingDragScroll(dragScroll)
 {
+	if(readingDragScroll && readingDragScroll.start)
+		readingDragScroll.endResolve();
+
 	readingDragScroll = dragScroll;
 }
 
@@ -1823,7 +2889,7 @@ function updateReadingPagesConfig(key, value)
 
 	if(currentReadingConfigKey === false)
 	{
-		var readingPagesConfig = storage.getKey('readingPagesConfig', dom.indexMainPathA());
+		var readingPagesConfig = storage.getKey('readingPagesConfig', dom.history.mainPath);
 		if(!readingPagesConfig || readingPagesConfig.configKey > 0)
 		{
 			if(readingPagesConfig && readingPagesConfig.configKey > 0)
@@ -1831,13 +2897,13 @@ function updateReadingPagesConfig(key, value)
 				var readingShortcutPagesConfig = storage.getKey('readingShortcutPagesConfig', readingPagesConfig.configKey);
 
 				if(readingShortcutPagesConfig)
-					readingPagesConfig = copy(readingShortcutPagesConfig);
+					readingPagesConfig = app.copy(readingShortcutPagesConfig);
 				else
-					readingPagesConfig = copy(config);
+					readingPagesConfig = app.copy(config);
 			}
 			else
 			{
-				readingPagesConfig = copy(config);
+				readingPagesConfig = app.copy(config);
 			}
 		}
 
@@ -1846,7 +2912,7 @@ function updateReadingPagesConfig(key, value)
 		readingPagesConfig.configKey = false;
 		readingPagesConfig[key] = value;
 
-		storage.updateVar('readingPagesConfig', dom.indexMainPathA(), readingPagesConfig);
+		storage.setKey('readingPagesConfig', dom.history.mainPath, readingPagesConfig);
 	}
 	else if(currentReadingConfigKey > 0)
 	{
@@ -1856,79 +2922,68 @@ function updateReadingPagesConfig(key, value)
 		{		
 			readingShortcutPagesConfig[key] = value;
 
-			storage.updateVar('readingShortcutPagesConfig', currentReadingConfigKey, readingShortcutPagesConfig);
+			storage.setKey('readingShortcutPagesConfig', currentReadingConfigKey, readingShortcutPagesConfig);
 		}
 	}
 	else if(currentReadingConfigKey == 0)
 	{
-		storage.updateVar('config', key, value);
+		storage.setKey('config', key, value);
 	}
 }
 
 //Controls the page view
 function changePagesView(mode, value, save)
 {
-	if(currentScale != 1)
-		reading.resetZoom(true, false, false);
+	// if(currentScale != 1)
+	//	reading.resetZoom(true, false);
 
-	var imageIndex = false;
+	const updateView = function(disposeImages) {
 
-	var newIndex = (currentIndex - 1);
+		view.disposeImages(disposeImages);
+		view.calculateView();
+		view.stayInLine.recalculate();
 
-	if(_config.readingManga && !readingViewIs('scroll'))
-		newIndex = (indexNum - newIndex) - 1;
+	}
 
-	eachImagesDistribution(newIndex, ['image'], function(image){
-
-		if(!imageIndex)
-			imageIndex = image.index;
-
-	});
-
-	if(!imageIndex) imageIndex = currentIndex;
+	const imageIndex = reloadIndex();
 
 	if(mode == 0)
 	{
-		loadReadingPages();
+		let selectTab = document.querySelector('#reading-pages .tabs > div > div.active').dataset.name;
+		loadReadingPages(false, false, selectTab);
 
-		template.loadContentRight('reading.content.right.html', true);
-
-		read(readingCurrentPath, imageIndex, false, readingIsCanvas);
+		reading.reloadAnimated(false, imageIndex);
 	}
 	else if(mode == 1) // Set the scroll mode
 	{
 		updateReadingPagesConfig('readingView', value);
 
-		dom.selectElement('.pages-'+value);
+		dom.queryAll('.reading-view .chip.active').removeClass('active');
+		dom.query('.reading-view-'+value).addClass('active');
 
-		if(value == 'slide' && (_config.readingViewAdjustToWidth || _config.readingWebtoon))
-		{
-			//storage.updateVar('config', 'readingViewAdjustToWidth', false);
-			//template.globalElement('.reading-ajust-to-width .switch').removeClass('a');
-		}
-
-		if(value == 'slide')
-			template.globalElement('.reading-ajust-to-width').addClass('disable-pointer');
+		if(value != 'scroll')
+			template.globalElement('.reading-ajust-to-width, .reading-force-single-page').addClass('disable-pointer');
 		else
-			template.globalElement('.reading-ajust-to-width').removeClass('disable-pointer');
+			template.globalElement('.reading-ajust-to-width, .reading-force-single-page').removeClass('disable-pointer');
 
-		template.loadContentRight('reading.content.right.html', true);
+		if(value === 'panels')
+			template.globalElement('.reading-reading-manga').removeClass('disable-pointer');
+		else if(_config.readingWebtoon)
+			template.globalElement('.reading-reading-manga').addClass('disable-pointer');
 
-		read(readingCurrentPath, imageIndex, false, readingIsCanvas);
+		reading.reloadAnimated(false, imageIndex);
 	}
 	else if(mode == 2) // Sets the margin of the pages
 	{
-		disposeImages({margin: value});
+		updateView({margin: value});
 
 		if(save) updateReadingPagesConfig('readingMargin', {margin: value, top: value, bottom: value, left: value, right: value});
+		updateEbook(save);
 	}
 	else if(mode == 3) // Set width adjustment
 	{
 		updateReadingPagesConfig('readingViewAdjustToWidth', value);
-
-		template.loadContentRight('reading.content.right.html', true);
-
-		read(readingCurrentPath, imageIndex, false, readingIsCanvas);
+		reading.reloadAnimated(false, imageIndex);
 	}
 	else if(mode == 4) // Set the speed of the animation when changing pages
 	{
@@ -1941,101 +2996,102 @@ function changePagesView(mode, value, save)
 	else if(mode == 6) // Set the reading to double page
 	{
 		if(value)
-			$('.reading-do-not-apply-to-horizontals, .reading-blank-page').removeClass('disable-pointer');
+			$('.reading-double-page-shadow, .reading-do-not-apply-to-horizontals, .reading-blank-page, .reading-align-with-next-horizontal').removeClass('disable-pointer');
 		else
-			$('.reading-do-not-apply-to-horizontals, .reading-blank-page').addClass('disable-pointer');
+			$('.reading-double-page-shadow, .reading-do-not-apply-to-horizontals, .reading-blank-page, .reading-align-with-next-horizontal').addClass('disable-pointer');
 
 		updateReadingPagesConfig('readingDoublePage', value);
-
-		template.loadContentRight('reading.content.right.html', true);
-
-		read(readingCurrentPath, imageIndex, false, readingIsCanvas);
+		reading.reloadAnimated(false, imageIndex);
 	}
 	else if(mode == 7) // Disables double-page reading in horizontal images
 	{
 		updateReadingPagesConfig('readingDoNotApplyToHorizontals', value);
-
-		template.loadContentRight('reading.content.right.html', true);
-
-		read(readingCurrentPath, imageIndex, false, readingIsCanvas);
+		reading.reloadAnimated(false, imageIndex);
 	}
 	else if(mode == 8) // Manga reading, invert the direction and double pages
 	{
 		updateReadingPagesConfig('readingManga', value);
-
-		template.loadContentRight('reading.content.right.html', true);
-
-		read(readingCurrentPath, imageIndex, false, readingIsCanvas);
+		reading.reloadAnimated(false, imageIndex);
 	}
 	else if(mode == 9) // Webtoon reading, scroll reading and adjust to width
 	{
 		updateReadingPagesConfig('readingWebtoon', value);
 
+		const manga = readingViewIs('panels') ? '' : '.reading-reading-manga, ';
+
 		if(value)
 		{
-			template.globalElement('.pages-slide, .pages-scroll, .reading-reading-manga, .reading-double-page, .reading-do-not-apply-to-horizontals, .reading-blank-page, .reading-ajust-to-width').addClass('disable-pointer');
+			template.globalElement('.reading-view-slide, .reading-view-fade, .reading-view-rough-page-turn, .reading-view-smooth-page-turn, '+manga+' .reading-double-page-shadow, .reading-do-not-apply-to-horizontals, .reading-blank-page, .reading-align-with-next-horizontal, .reading-ajust-to-width, .reading-margin-vertical, .reading-force-single-page').addClass('disable-pointer');
+		
+			if(!_config.readingNotEnlargeMoreThanOriginalSize)
+			{
+				events.swiftClick.call(template._globalElement().querySelector('.reading-not-enlarge-more-than-original-size .switch'));
+				updateReadingPagesConfig('readingNotEnlargeMoreThanOriginalSize', true);
+			}
 		}
 		else
 		{
 			if(_config.readingView == 'scroll')
-				template.globalElement('.reading-ajust-to-width').removeClass('disable-pointer');
+				template.globalElement('.reading-ajust-to-width, .reading-force-single-page').removeClass('disable-pointer');
 			
 			if(_config.readingDoublePage)
-				template.globalElement('.reading-do-not-apply-to-horizontals, .reading-blank-page').removeClass('disable-pointer');
+				template.globalElement('.reading-double-page-shadow, .reading-do-not-apply-to-horizontals, .reading-blank-page, .reading-align-with-next-horizontal').removeClass('disable-pointer');
 
-			template.globalElement('.pages-slide, .pages-scroll, .reading-reading-manga, .reading-double-page').removeClass('disable-pointer');
+			template.globalElement('.reading-view-slide, .reading-view-fade, .reading-view-rough-page-turn, .reading-view-smooth-page-turn, .reading-reading-manga, .reading-double-page, .reading-margin-vertical').removeClass('disable-pointer');
 		}
 
-		template.loadContentRight('reading.content.right.html', true);
-
-		read(readingCurrentPath, imageIndex, false, readingIsCanvas);
+		reading.reloadAnimated(false, imageIndex);
 	}
 	else if(mode == 10) // Set horizontal margin of the pages
 	{
-		disposeImages({left: value, right: value});
-		stayInLine();
+		updateView({left: value, right: value});
+
+		render.resized(doublePage.active());
 
 		if(save) updateReadingPagesConfig('readingMargin', {margin: _config.readingMargin.margin, top: _config.readingMargin.top, bottom: _config.readingMargin.bottom, left: value, right: value});
+		updateEbook(save);
+
+		reading.doublePage.apply({left: value});
 	}
 	else if(mode == 11) // Set vertical margin of the pages
 	{
-		disposeImages({top: value, bottom: value});
-		stayInLine();
+		updateView({top: value, bottom: value});
+
+		render.resized(doublePage.active());
 
 		if(save) updateReadingPagesConfig('readingMargin', {margin: _config.readingMargin.margin, top: value, bottom: value, left: _config.readingMargin.left, right: _config.readingMargin.right});
+		updateEbook(save);
 	}
 	else if(mode == 12) // Add blank page at first
 	{
 		updateReadingPagesConfig('readingBlankPage', value);
-
-		template.loadContentRight('reading.content.right.html', true);
-
-		read(readingCurrentPath, imageIndex, false, readingIsCanvas);
+		reading.reloadAnimated(false, imageIndex);
 	}
 	else if(mode == 13) // Set width adjustment
 	{
 		updateReadingPagesConfig('readingHorizontalsMarginActive', value);
-
-		template.loadContentRight('reading.content.right.html', true);
 
 		if(value)
 			template.globalElement('.reading-horizontals-margin').removeClass('disable-pointer');
 		else
 			template.globalElement('.reading-horizontals-margin').addClass('disable-pointer');
 
-		read(readingCurrentPath, imageIndex, false, readingIsCanvas);
+		reading.reloadAnimated(false, imageIndex);
 	}
 	else if(mode == 14) // Set horizontal margin of the horizontals pages
 	{
-		disposeImages({horizontalsLeft: value, horizontalsRight: value});
-		stayInLine();
+		updateView({horizontalsLeft: value, horizontalsRight: value});
+
+		render.resized(doublePage.active());
 
 		if(save) updateReadingPagesConfig('readingHorizontalsMargin', {margin: _config.readingHorizontalsMargin.margin, top: _config.readingHorizontalsMargin.top, bottom: _config.readingHorizontalsMargin.bottom, left: value, right: value});
+		updateEbook(save);
 	}
 	/*else if(mode == 15) // Set vertical margin of the horizontals pages
 	{
-		disposeImages({horizontalsTop: value, horizontalsBottom: value});
-		stayInLine();
+		view.disposeImages({horizontalsTop: value, horizontalsBottom: value});
+		view.calculateView();
+		view.stayInLine.recalculate();
 
 		if(save) updateReadingPagesConfig('readingHorizontalsMargin', {margin: _config.readingHorizontalsMargin.margin, top: value, bottom: value, left: _config.readingHorizontalsMargin.left, right: _config.readingHorizontalsMargin.right});
 	}*/
@@ -2043,63 +3099,248 @@ function changePagesView(mode, value, save)
 	{
 		updateReadingPagesConfig('readingImageClip', {top: _config.readingImageClip.top, bottom: _config.readingImageClip.bottom, left: value, right: value});
 
-		addHtmlImages();
-		disposeImages();
-		calculateView();
-		stayInLine();
+		if(readingIsEbook) return;
+
+		view.distribution.htmlItems();
+		updateView();
+
+		render.resized(doublePage.active());
+		filters.cleanIsBlackAndWhiteCurrent();
 	}
 	else if(mode == 17) // Clip vertical images
 	{
 		updateReadingPagesConfig('readingImageClip', {top: value, bottom: value, left: _config.readingImageClip.left, right: _config.readingImageClip.right});
 
-		addHtmlImages();
-		disposeImages();
-		calculateView();
-		stayInLine();
+		if(readingIsEbook) return;
+
+		view.distribution.htmlItems();
+		updateView();
+
+		render.resized(doublePage.active());
+		filters.cleanIsBlackAndWhiteCurrent();
+	}
+	else if(mode == 18) // Do not enlarge images more than its original size
+	{
+		updateReadingPagesConfig('readingNotEnlargeMoreThanOriginalSize', value);
+		reading.reloadAnimated(false, imageIndex);
+	}
+	else if(mode == 20) // Force show single page in scroll mode
+	{
+		updateReadingPagesConfig('readingForceSinglePage', value);
+
+		updateView();
+
+		render.resized(doublePage.active());
+		// updateEbook(true);
+	}
+	else if(mode == 21) // Align double pages with the next horizontal image
+	{
+		updateReadingPagesConfig('readingAlignWithNextHorizontal', value);
+		reading.reloadAnimated(false, imageIndex);
+	}
+	else if(mode == 19 || mode == 22) // Rotate images
+	{
+		const globalElement = template._globalElement();
+
+		const key = (mode == 22 ? 'readingRotate' : 'readingRotateHorizontals');
+		const element = (mode == 22 ? globalElement.querySelector('.reading-rotate') : globalElement.querySelector('.reading-rotate-horizontals'));
+
+		const css = {
+			1: 'reading-rotate-left',
+			2: 'reading-rotate-right',
+			3: 'reading-rotate-upside-down',
+		};
+
+		const current = _config[key];
+
+		if(current == value)
+		{
+			dom.this(element).find('.chip.active', true).removeClass('active');
+
+			value = 0;
+		}
+		else
+		{
+			dom.this(element).find('.chip.active', true).removeClass('active');
+			dom.this(element).find('.chip.'+css[value], true).addClass('active');
+		}
+
+		updateReadingPagesConfig(key, value);
+		reading.reloadAnimated(false, imageIndex);
+	}
+	else if(mode == 23) // Extract images from document (PDF / EPUB)
+	{
+		updateReadingPagesConfig('readingExtractDocumentImages', value);
+
+		if(value)
+			template.globalElement('.reading-ebook-options').addClass('disable-pointer');
+		else
+			template.globalElement('.reading-ebook-options').removeClass('disable-pointer');
+
+		if(value)
+			dom.queryAll('.reading-extract-document-images .switch').addClass('a');
+		else
+			dom.queryAll('.reading-extract-document-images .switch').removeClass('a');
+
+		reading.reloadAnimated(true, imageIndex);
 	}
 }
 
-//Change the bookmark icon
-function activeBookmark(mode)
+function reloadIndex()
 {
-	if(mode == 1)
+	let imageIndex = false;
+	let newIndex = (currentIndex - 1);
+
+	if(readingManga())
+		newIndex = (view.distribution.total - newIndex) - 1;
+
+	eachImagesDistribution(newIndex, ['image', 'blank'], function(image) {
+
+		if(!imageIndex && image.index !== false)
+			imageIndex = image.index + (image.blank ? 1 : 0);
+
+	});
+
+	if(!imageIndex)
+		imageIndex = currentIndex;
+
+	return imageIndex;
+}
+
+function reloadAnimated(full = false, imageIndex = false)
+{
+	app.setThrottle('readingReloadAnimated', function() {
+
+		if(readingIsEbook) handlebarsContext.loading = true;
+		template.loadContentRight('reading.content.right.html', true);
+
+		reading.reload(full, imageIndex);
+
+	}, 10, 20);
+}
+
+function reload(full = false, imageIndex = false)
+{
+	imageIndex = imageIndex !== false ? imageIndex : reloadIndex();
+
+	if(full)
 	{
-		template.barHeader('.button-bookmark').addClass('fill').attr('hover-text', language.reading.removeBookmark);
+		dom.openComic(true, (imagesData[imageIndex]?.path || dom.history.path), dom.history.mainPath, false, false, true);
 	}
 	else
 	{
-		template.barHeader('.button-bookmark').removeClass('fill').attr('hover-text', language.reading.addBookmark);
+		read(readingCurrentPath, imageIndex, false, readingIsPdf, readingIsEbook);
 	}
 }
 
-//Check if a path is a marker
-function isBookmark(path)
+function change(key, value)
 {
+	/*switch (key)
+	{
+		case 'pageSoundEffect':
+
+			_config.readingSoundEffect.page.play = value;
+			updateReadingPagesConfig('readingSoundEffect', _config.readingSoundEffect);
+
+			break;
+	}*/
+}
+
+storage.onChangeFromOtherInstance('bookmarks', function() {
+
+	if(onReading && isLoaded)
+	{
+		currentPageIsBookmark()
+	}
+
+});
+
+//Change the bookmark icon
+function activeBookmark(active = false)
+{
+	if(active)
+		template.barHeader('.button-bookmark').addClass('fill').attr('hover-text', language.reading.removeBookmark);
+	else
+		template.barHeader('.button-bookmark').removeClass('fill').attr('hover-text', language.reading.addBookmark);
+}
+
+function getBookmarks()
+{
+	const bookmarks = relative.get('bookmarks');
+	return bookmarks?.[dom.history.mainPath] ?? [];
+}
+
+function currentPageIsBookmark()
+{
+	const images = reading.getImageByPosition(reading.currentImagePosition(), false);
+
+	for(const image of images)
+	{
+		if(isBookmark(p.normalize(image.path)))
+			return true;
+	}
+
+	return false;
+}
+
+//Check if a path is a bookmarks
+function isBookmark(path, _return = false)
+{
+	path = p.relative(dom.history.mainPath || '', path);
 	let i = false;
 
-	for(let key in readingCurrentBookmarks)
+	const bookmarks = getBookmarks();
+
+	if(readingIsEbook)
 	{
-		if(readingCurrentBookmarks[key].path === path)
+		let _path = path.replace(/\?page=[0-9]+$/, '');
+		let page = app.extract(/\?page=([0-9]+)$/, path, 1);
+
+		page = _ebook.pages[page];
+
+		let min = page.chapterProgressSize == page.chapterProgress ? 0 : page.chapterProgress - (page.chapterProgressSize / 2);
+		let max = page.chapterProgress + (page.chapterProgressSize / 2);
+
+		for(let key in bookmarks)
 		{
-			i = key;
-			break;
+			let bookmark = bookmarks[key];
+
+			if(bookmark.path === _path && bookmark.chapterProgress >= min && bookmark.chapterProgress < max)
+			{
+				i = key;
+				break;
+			}
+		}
+	}
+	else
+	{
+		for(let key in bookmarks)
+		{
+			if(bookmarks[key].path === path)
+			{
+				i = key;
+				break;
+			}
 		}
 	}
 
+	if(_return)
+		return i;
+
 	if(i !== false)
 	{
-		activeBookmark(1);
+		activeBookmark(true);
 		return true;
 	}
 	else
 	{
-		activeBookmark(2);
+		activeBookmark(false);
 		return false;
 	}
 }
 
 //Create and delete bookmarks
-function createAndDeleteBookmark(index = false)
+function createAndDeleteBookmark(index = false, force = null)
 {
 	let imageIndex = false;
 
@@ -2107,17 +3348,17 @@ function createAndDeleteBookmark(index = false)
 	{
 		let imageBookmark = false;
 
-		var newIndex = (currentIndex - 1);
+		let newIndex = (currentIndex - 1);
 
-		if(_config.readingManga && !readingViewIs('scroll'))
-			newIndex = (indexNum - newIndex) - 1;
+		if(readingManga())
+			newIndex = (view.distribution.total - newIndex) - 1;
 
 		eachImagesDistribution(newIndex, ['image'], function(image){
 
 			if(!imageIndex)
 				imageIndex = image.index;
 
-			if(isBookmark(p.normalize(images[image.index].path)))
+			if(isBookmark(p.normalize(imagesData[image.index].path)))
 			{
 				if(imageBookmark)
 				{
@@ -2138,145 +3379,111 @@ function createAndDeleteBookmark(index = false)
 
 	if(currentIndex <= contentNum && currentIndex > 0 && imageIndex)
 	{
-		var path = p.normalize(images[imageIndex].path);
+		const bookmarks = getBookmarks();
+		let path = p.normalize(imagesData[imageIndex].path);
 
-		if(typeof readingCurrentBookmarks !== 'undefined')
+		let progress = 0;
+		let chapterProgress = 0;
+
+		if(readingIsEbook)
 		{
-			let i = false;
+			let page = _ebook.pages[imageIndex - 1];
 
-			for(let key in readingCurrentBookmarks)
-			{
-				if(readingCurrentBookmarks[key].path === path)
-				{
-					i = key;
-					break;
-				}
-			}
+			progress = page.progress;
+			chapterProgress = page.chapterProgress;
+		}
 
-			if(i !== false)
-			{
-				readingCurrentBookmarks.splice(i, 1);
-				activeBookmark(2);
-			}
-			else
-			{
-				readingCurrentBookmarks.push({path: path, index: imagesPath[path]});
-				activeBookmark(1);
-			}
+		let newBookmark = {
+			path: p.relative(dom.history.mainPath, path.replace(/\?page=[0-9]+$/, '')),
+			index: imagesPath[path],
+			ebook: readingIsEbook,
+			progress: progress,
+			chapterProgress: chapterProgress,
+		};
+
+	
+		let i = isBookmark(path, true);
+
+		if(force !== null)
+		{
+			if(force && i !== false)
+				return;
+			else if(!force && i === false)
+				return;
+		}
+
+		if(i !== false)
+		{
+			bookmarks.splice(i, 1);
+			activeBookmark(false);
 		}
 		else
 		{
-			readingCurrentBookmarks = [{path: path, index: imagesPath[path]}];
-			activeBookmark(1);
+			bookmarks.push(newBookmark);
+			activeBookmark(true);
 		}
 
-		storage.updateVar('bookmarks', dom.indexMainPathA(), readingCurrentBookmarks);
+		storage.setKey('bookmarks', relative.path(dom.history.mainPath), bookmarks);
 	}
 }
 
-var saveReadingProgressA = false;
-
-//Save current reading progress
-function saveReadingProgress(path = false)
+function deleteBookmark(key)
 {
-	if(!onReading)
-		return;
+	const bookmarks = getBookmarks();
+	bookmarks.splice(key, 1);
+	storage.setKey('bookmarks', relative.path(dom.history.mainPath), bookmarks);
 
-	if(!saveReadingProgressA)
-		return;
+	loadBookmarks(true);
+}
 
-	var mainPath = dom.indexMainPathA();
+var fromSkip = false;
 
-	if(!path)
-	{
-		let imageIndex = false;
-
-		var newIndex = (currentIndex - 1);
-
-		if(_config.readingManga && !readingViewIs('scroll'))
-			newIndex = (indexNum - newIndex) - 1;
-
-		eachImagesDistribution(newIndex, ['image'], function(image){
-
-			if(!imageIndex)
-				imageIndex = image.index;
-
-		});
-
-		if(imageIndex === false)
-			imageIndex = Object.keys(images)[0];
-
-		path = p.normalize(images[imageIndex].path);
-	}
-
-	var comic = false, comicIndex = 0, comics = storage.get('comics');
-
-	for(let i in comics)
-	{
-		if(comics[i].path == mainPath)
-		{
-			comic = comics[i];
-			comicIndex = i;
-			break;
-		}
-	}
-
-	storage.updateVar('readingProgress', dom.indexMainPathA(), {
-		index: imagesPath[path],
-		path: path,
-		lastReading: +new Date(),
-		progress: 0,
-	});
-
-	dom.indexPathControlUpdateLastComic(path);
-
-	if(comic && path)
-	{
-		comic.readingProgress.path = imagesPath[path];
-		comic.readingProgress.path = path;
-		comic.readingProgress.lastReading = +new Date();
-		comic.readingProgress.progress = 0;
-
-		storage.updateVar('comics', comicIndex, comic);
-	}
-	return true;
+function setFromSkip()
+{
+	fromSkip = true;
 }
 
 //Load the bookmarks in the current directory
-function loadBookmarks()
+function loadBookmarks(bookmarksChild = false)
 {
-	var bookmarksPath = {}, mainPath = dom.indexMainPathA();
+	const bookmarks = getBookmarks();
+	var bookmarksPath = {}, mainPath = dom.history.mainPath;
 
-	for(let key in readingCurrentBookmarks)
+	let images = [];
+
+	for(let key in bookmarks)
 	{
-		if(typeof readingCurrentBookmarks[key].path != 'undefined')
+		if(typeof bookmarks[key].path != 'undefined')
 		{
-			let bookmark = readingCurrentBookmarks[key];
+			const bookmark = bookmarks[key];
+			const path = p.join(mainPath, bookmark.path);
 
-			let bookmarkDirname = p.dirname(bookmark.path);
+			let bookmarkDirname = p.dirname(path);
 
 			if(typeof bookmarksPath[bookmarkDirname] === 'undefined') bookmarksPath[bookmarkDirname] = [];
 
-			let sha = sha1(bookmark.path);
+			let sha = sha1(path);
+			images.push({path: path, sha: sha});
 
-			let thumbnail = cache.returnThumbnailsImages({path: bookmark.path, sha: sha}, function(data) {
-
-				dom.addImageToDom(data.sha, data.path);
-
-			});
+			let name = p.basename(path);
+			let chapterIndex = +app.extract(/^([0-9]+)\_sortonly/, name, 1);
 
 			bookmarksPath[bookmarkDirname].push({
-				name: decodeURI(p.basename(bookmark.path).replace(/\.[^\.]*$/, '')),
-				index: (bookmarkDirname !== readingCurrentPath) ? bookmark.index : imagesPath[bookmark.path],
+				key: key,
+				name: dom.translatePageName(decodeURI(p.basename(path).replace(/\.[^\.]*$/, ''))),
+				index: (bookmarkDirname !== readingCurrentPath) ? bookmark.index : imagesPath[path],
 				sha: sha,
 				mainPath: mainPath,
-				thumbnail: (thumbnail.cache) ? thumbnail.path : '',
-				path: bookmark.path,
+				path: path,
+				chapterIndex: chapterIndex,
+				ebook: bookmark.ebook,
+				progress: bookmark.progress,
+				chapterProgress: bookmark.chapterProgress,
 			});
 		}
 	}
 
-	var bookmarks = [];
+	const _bookmarks = [];
 
 	for(let path in bookmarksPath)
 	{
@@ -2289,46 +3496,60 @@ function loadBookmarks()
 			return 0;
 		});
 
-		bookmarks.push({
+		_bookmarks.push({
 			continueReading: false,
 			current: (path === readingCurrentPath) ? true : false,
 			path: path,
-			name: p.basename(path),
+			name: dom.metadataPathName({path: path, name: p.basename(path)}, true),
 			bookmarks: bookmarksPath[path],
 		});
 	}
 
-	let readingProgress = storage.getKey('readingProgress', dom.indexMainPathA());
+	let readingProgress = relative.get('readingProgress');
+	readingProgress = readingProgress[dom.history.mainPath];
 
 	if(readingProgress)
 	{
 		let bookmarkDirname = p.dirname(readingProgress.path);
 
 		let sha = sha1(readingProgress.path);
+		images.push({path: readingProgress.path, sha: sha});
 
-		let thumbnail = cache.returnThumbnailsImages({path: readingProgress.path, sha: sha}, function(data){
-
-			dom.addImageToDom(data.sha, data.path);
-
-		});
-
-		bookmarks.push({
+		_bookmarks.push({
 			continueReading: true,
 			current: (bookmarkDirname === readingCurrentPath) ? true : false,
 			path: bookmarkDirname,
-			name: p.basename(bookmarkDirname),
+			name: dom.metadataPathName({path: bookmarkDirname, name: p.basename(bookmarkDirname)}, true),
 			bookmarks: [{
-				name: decodeURI(p.basename(readingProgress.path).replace(/\.[^\.]*$/, '')),
+				name: dom.translatePageName(decodeURI(p.basename(readingProgress.path).replace(/\.[^\.]*$/, ''))),
 				index: readingProgress.index,
 				sha: sha,
 				mainPath: readingProgress.mainPath,
-				thumbnail: (thumbnail.cache) ? thumbnail.path : '',
 				path: readingProgress.path,
+				ebook: readingProgress.ebook,
+				progress: readingProgress.progress,
+				chapterIndex: readingProgress.chapterIndex,
+				chapterProgress: readingProgress.chapterProgress,
 			}],
 		});
 	}
 
-	bookmarks.sort(function (a, b) {
+	let thumbnails = cache.returnThumbnailsImages(images, function(data) {
+
+		dom.addImageToDom(data.sha, data.path);
+
+	}, readingFile);
+
+	for(let i = 0, len = _bookmarks.length; i < len; i++)
+	{
+		for(let i2 = 0, len2 = _bookmarks[i].bookmarks.length; i2 < len2; i2++)
+		{
+			let thumbnail = thumbnails[_bookmarks[i].bookmarks[i2].sha] || {};
+			_bookmarks[i].bookmarks[i2].thumbnail = (thumbnail.cache) ? thumbnail.path : '';
+		}
+	}
+
+	_bookmarks.sort(function (a, b) {
 
 		if(a.current || a.continueReading) return -1;
 
@@ -2337,101 +3558,256 @@ function loadBookmarks()
 		return dom.orderBy(a, b, 'simple', 'path');
 	});
 
-	handlebarsContext.bookmarks = bookmarks;
+	handlebarsContext.bookmarks = _bookmarks;
+	handlebarsContext.bookmarksChild = bookmarksChild;
+	handlebarsContext.bookmarksSaveImages = (reading.isPdf() || reading.isEbook()) ? false : true;
 
-	$('#collections-bookmark .menu-simple').html(template.load('reading.elements.menus.collections.bookmarks.html'));
+	dom.query(!bookmarksChild ? '#collections-bookmark .menu-simple' : '#collections-bookmark .menu-simple > div').html(template.load('reading.elements.menus.collections.bookmarks.html'));
+}
+
+function autodetectWebtoon()
+{
+	if(/(?:webtoon|web-toon|웹툰|ウェブトゥーン|条漫|條漫|纵漫|縱漫|縦読み(?:マンガ|漫画))/iu.test(dom.history.path || ''))
+		return true;
+
+	for(const item of items)
+	{
+		if(item.aspectRatio && item.aspectRatio < 0.5)
+			return true;
+	}
+
+	return false;
 }
 
 var currentReadingConfigKey = false;
 
-function loadReadingConfig(key = false)
+function getConfig(path = false, mainPath = '', key = false, _copy = false, parents = false)
 {
-	_config = copy(config);
-
-	currentReadingConfigKey = key;
+	// TODO: Copy just in case
+	let configData = _copy ? app.copy(config) : config;
 
 	if(key === false)
 	{
-		var readingPagesConfig = storage.getKey('readingPagesConfig', dom.indexMainPathA());
+		let readingPagesConfig = storage.getKey('readingPagesConfig', mainPath);
+
+		if(!readingPagesConfig && mainPath && parents)
+		{
+			let pPath = mainPath;
+
+			while(true)
+			{
+				const parent = p.dirname(pPath);
+				if(parent === pPath) break;
+
+				pPath = parent;
+
+				readingPagesConfig = storage.getKey('readingPagesConfig', pPath);
+				if(readingPagesConfig) break;
+			}
+		}
 
 		if(readingPagesConfig)
 		{
 			if(readingPagesConfig.configKey)
 				key = readingPagesConfig.configKey;
 			else
-				_config = {..._config, ...readingPagesConfig, key: readingPagesConfig.configKey};
+				configData = {...configData, ...readingPagesConfig, key: readingPagesConfig.configKey};
 		}
-		else
+		else if(path)
 		{
-			_config.key = 0;
+			key = getLabelConfigKey(path);
+			configData.key = key;
 		}
 	}
 
 	if(key > 0)
 	{
-		var readingShortcutPagesConfig = storage.getKey('readingShortcutPagesConfig', key);
+		const readingShortcutPagesConfig = storage.getKey('readingShortcutPagesConfig', key);
 
 		if(readingShortcutPagesConfig)
-			_config = {..._config, ...readingShortcutPagesConfig};
+			configData = {...configData, ...readingShortcutPagesConfig};
 
-		_config.key = key;
+		configData.key = key;
 	}
 	else if(key === 0)
 	{
-		_config.key = 0;
+		configData.key = 0;
 	}
 
-	_config = copy(_config);
+	if(!configData.readingWebtoon && config.readingAutodetectWebtoon && key === 0)
+	{
+		if(autodetectWebtoon())
+		{
+			configData.readingWebtoon = true;
+			configData.key = false;
+		}
+	}
 
+	return configData;
+}
+
+function loadReadingConfig(key = false, mainPath = false, _return = false)
+{
+	mainPath = mainPath || dom.history.mainPath;
+	currentReadingConfigKey = key;
+
+	const __config = getConfig(false, mainPath, key, true);
+
+	if(_return)
+		return __config;
+
+	_config = app.copy(__config);
 	handlebarsContext._config = _config;
 }
 
-function loadReadingPages(key = false, edit = false)
+function updateConfigLabels()
+{
+	let globalElement = template._globalElement();
+
+	let empty = globalElement.querySelector('.reading-labels-empty');
+	let list = globalElement.querySelector('.reading-labels-list');
+
+	if(!empty || !list)
+		return;
+
+	const labels = _config.labels || [];
+
+	if(labels.length)
+	{
+		empty.style.display = 'none';
+		list.style.display = '';
+	}
+	else
+	{
+		empty.style.display = '';
+		list.style.display = 'none';
+	}
+
+	handlebarsContext.readingLabels = labels;
+	list.innerHTML = template.load('reading.content.right.labels.list.html');
+}
+
+function getLabelConfigKey(path = false)
+{
+	path = path || dom.history.path;
+	const labels = dom.labels.has(path, true);
+
+	if(labels.length)
+	{
+		const readingShortcutPagesConfig = storage.get('readingShortcutPagesConfig');
+
+		toBreak:
+		for(let index in readingShortcutPagesConfig)
+		{
+			const shortcutConfig = readingShortcutPagesConfig[index];
+
+			for(let i = 0, len = shortcutConfig.labels.length; i < len; i++)
+			{
+				const label = shortcutConfig.labels[i];
+
+				if(labels.includes(label))
+				{
+					return shortcutConfig.key;
+				}
+			}
+		}
+	}
+
+	return 0;
+}
+
+function purgeGlobalReadingPagesConfig()
+{
+	const readingPagesConfig = storage.get('readingPagesConfig');
+
+	for(let path in readingPagesConfig)
+	{
+		const configKey = readingPagesConfig[path].configKey;
+
+		if(configKey === 0)
+		{
+			const labelConfigKey = getLabelConfigKey();
+
+			if(labelConfigKey === 0)
+				storage.deleteKey('readingPagesConfig', path);
+		}
+	}
+}
+
+function loadReadingPages(key = false, edit = false, tab = 'page-layout')
 {
 	loadReadingConfig(key);
 
-	handlebarsContext.readingGlobalConfigName = config.readingConfigName ? config.readingConfigName : language.reading.pages.readingGlobal;
+	handlebarsContext.readingPagesTab = tab;
+
+	handlebarsContext.readingGlobalConfigName = config.readingPresetName ? config.readingPresetName : language.reading.pages.readingGlobal;
 
 	handlebarsContext.readingShortcutPagesConfig = storage.get('readingShortcutPagesConfig');
 
 	handlebarsContext.editReadingShortcutPagesConfig = edit;
 
-	$('#reading-pages .menu-simple').html(template.load('reading.elements.menus.pages.html'));
+	filters.processContext();
+	readingEbook.processContext();
+	ai.processContext();
+
+	let menuSimpleContent = document.querySelector('#reading-pages .menu-simple-content');
+	menuSimpleContent.innerHTML = template.load('reading.elements.menus.pages.html');
+
+	updateConfigLabels();
 
 	events.events();
+
+	// Fix error in gamepad menus
+	(async function(){
+
+		await app.sleep(5);
+
+		events.events();
+
+	})();
 }
 
 function setReadingShortcutPagesConfig(key = 0, desactiveMenu = true)
 {
 	if(key == 0)
 	{
-		storage.updateVar('readingPagesConfig', dom.indexMainPathA(), null);
+		const labelConfigKey = getLabelConfigKey();
+
+		if(labelConfigKey)
+			storage.setKey('readingPagesConfig', dom.history.mainPath, {configKey: 0});
+		else
+			storage.deleteKey('readingPagesConfig', dom.history.mainPath);
 	}
 	else
 	{
-		var readingPagesConfig = storage.getKey('readingPagesConfig', dom.indexMainPathA());
+		var readingPagesConfig = storage.getKey('readingPagesConfig', dom.history.mainPath);
 
 		if(!readingPagesConfig) readingPagesConfig = {};
 		readingPagesConfig.configKey = key;
 
-		storage.updateVar('readingPagesConfig', dom.indexMainPathA(), readingPagesConfig);
+		storage.setKey('readingPagesConfig', dom.history.mainPath, readingPagesConfig);
 	}
 
 	changePagesView(0);
 
 	if(desactiveMenu)
-		events.desactiveMenu('#reading-pages', '.bar-right-buttons .button-book-open-page-variant');
+		events.desactiveMenu('#reading-pages', '.bar-right-buttons .button-ebook-layout, .bar-right-buttons .button-page-layout, .bar-right-buttons .button-filters, .bar-right-buttons .button-ai');
 }
 
 function editReadingShortcutPagesConfig(event, key = 0)
 {
 	event.stopPropagation();
 
-	loadReadingPages(key, true);
+	let selectTab = document.querySelector('#reading-pages .tabs > div > div.active').dataset.name;
+
+	loadReadingPages(key, true, selectTab);
 
 	reading.changePagesView(0);
 
-	loadReadingPages(key, true);
+	loadReadingPages(key, true, selectTab);
+
+	filters.apply();
+	doublePage.apply();
 }
 
 function editReadingShortcutPagesConfigName(key = 0, save = false)
@@ -2458,7 +3834,7 @@ function editReadingShortcutPagesConfigName(key = 0, save = false)
 		{
 			if(key === 0)
 			{
-				storage.updateVar('config', 'readingConfigName', name);
+				storage.setKey('config', 'readingPresetName', name);
 			}
 			else
 			{			
@@ -2466,31 +3842,33 @@ function editReadingShortcutPagesConfigName(key = 0, save = false)
 
 				if(readingShortcutPagesConfig)
 				{			
-					readingShortcutPagesConfig['readingConfigName'] = name;
+					readingShortcutPagesConfig['readingPresetName'] = name;
 
-					storage.updateVar('readingShortcutPagesConfig', key, readingShortcutPagesConfig);
+					storage.setKey('readingShortcutPagesConfig', key, readingShortcutPagesConfig);
 
 				}
 			}
 
-			loadReadingPages(key, true);
+			let selectTab = document.querySelector('#reading-pages .tabs > div > div.active').dataset.name;
+
+			loadReadingPages(key, true, selectTab);
 		}
 	}
 	else
 	{
 		if(key === 0)
 		{
-			handlebarsContext.readingShortcutConfigName = config.readingConfigName ? config.readingConfigName : language.reading.pages.readingGlobal;
+			handlebarsContext.readingShortcutConfigName = config.readingPresetName ? config.readingPresetName : language.reading.pages.readingGlobal;
 		}
 		else
 		{
 			var readingShortcutPagesConfig = storage.getKey('readingShortcutPagesConfig', key);
 
-			handlebarsContext.readingShortcutConfigName = readingShortcutPagesConfig ? readingShortcutPagesConfig.readingConfigName : '';
+			handlebarsContext.readingShortcutConfigName = readingShortcutPagesConfig ? readingShortcutPagesConfig.readingPresetName : '';
 		}
 
 		events.dialog({
-			header: language.dialog.pages.readingConfigEditHeader,
+			header: language.dialog.pages.readingPresetEditHeader,
 			width: 400,
 			height: false,
 			content: template.load('dialog.pages.reading.config.html'),
@@ -2500,11 +3878,14 @@ function editReadingShortcutPagesConfigName(key = 0, save = false)
 					function: 'events.closeDialog();',
 				},
 				{
-					text: language.buttons.ok,
+					text: language.buttons.save,
 					function: 'events.closeDialog(); reading.editReadingShortcutPagesConfigName('+key+', true);',
 				}
 			],
 		});
+
+		events.focus('.input-config-name');
+		events.eventInput();
 	}
 }
 
@@ -2545,12 +3926,15 @@ function newReadingShortcutPagesConfig(save = false)
 			readingShortcutPagesConfig[newKey] = {
 				...storage.readingPagesConfig,
 				key: newKey,
-				readingConfigName: name,
+				readingPresetName: name,
+				labels: [],
 			};
 
-			storage.update('readingShortcutPagesConfig', readingShortcutPagesConfig);
+			storage.set('readingShortcutPagesConfig', readingShortcutPagesConfig);
 
 			reading.setReadingShortcutPagesConfig(newKey, false);
+
+			events.closeDialog();
 		}
 	}
 	else
@@ -2558,7 +3942,7 @@ function newReadingShortcutPagesConfig(save = false)
 		handlebarsContext.readingShortcutConfigName = '';
 
 		events.dialog({
-			header: language.dialog.pages.readingConfigNewHeader,
+			header: language.dialog.pages.readingPresetNewHeader,
 			width: 400,
 			height: false,
 			content: template.load('dialog.pages.reading.config.html'),
@@ -2568,11 +3952,14 @@ function newReadingShortcutPagesConfig(save = false)
 					function: 'events.closeDialog();',
 				},
 				{
-					text: language.buttons.ok,
-					function: 'events.closeDialog(); reading.newReadingShortcutPagesConfig(true);',
+					text: language.buttons.save,
+					function: 'reading.newReadingShortcutPagesConfig(true);',
 				}
 			],
 		});
+
+		events.focus('.input-config-name');
+		events.eventInput();
 	}
 }
 
@@ -2585,7 +3972,7 @@ function removeReadingShortcutPagesConfig(key, confirm = false)
 
 		delete readingShortcutPagesConfig[key];
 
-		storage.update('readingShortcutPagesConfig', readingShortcutPagesConfig);
+		storage.set('readingShortcutPagesConfig', readingShortcutPagesConfig);
 
 		// Remove from comic config
 		var readingPagesConfig = storage.get('readingPagesConfig');
@@ -2596,10 +3983,12 @@ function removeReadingShortcutPagesConfig(key, confirm = false)
 				delete readingPagesConfig[path];
 		}
 
-		storage.update('readingShortcutPagesConfig', readingShortcutPagesConfig);
+		storage.set('readingShortcutPagesConfig', readingShortcutPagesConfig);
+		purgeGlobalReadingPagesConfig();
 
 		// Reload
-		reading.loadReadingPages();
+		let selectTab = document.querySelector('#reading-pages .tabs > div > div.active').dataset.name;
+		reading.loadReadingPages(false, false, selectTab);
 		reading.changePagesView(0);
 	}
 	else
@@ -2607,10 +3996,10 @@ function removeReadingShortcutPagesConfig(key, confirm = false)
 		handlebarsContext.readingShortcutConfigName = '';
 
 		events.dialog({
-			header: language.dialog.pages.readingConfigRemoveHeader,
+			header: language.dialog.pages.readingPresetRemoveHeader,
 			width: 400,
 			height: false,
-			content: language.dialog.pages.readingConfigRemove,
+			content: language.dialog.pages.readingPresetRemove,
 			buttons: [
 				{
 					text: language.buttons.cancel,
@@ -2632,7 +4021,7 @@ function loadTrackigSites()
 	handlebarsContext.trackingSites = trackingSites.list(true);
 	handlebarsContext.favoriteTrackingSites = trackingSites.listFavorite(true);
 
-	$('#tracking-sites .menu-simple').html(template.load('reading.elements.menus.tracking.sites.html'));
+	$('#tracking-sites .menu-simple-content').html(template.load('reading.elements.menus.tracking.sites.html'));
 }
 
 function trackingSiteToFavorite(site = '')
@@ -2650,7 +4039,7 @@ function trackingSiteToFavorite(site = '')
 
 		configSites[site] = siteData.config;
 
-		storage.updateVar('config', 'trackingSites', configSites);
+		storage.setKey('config', 'trackingSites', configSites);
 
 		loadTrackigSites()
 	}
@@ -2671,14 +4060,16 @@ function eachImagesDistribution(index, contains, callback, first = false, notFou
 	if(contains && contains.indexOf('blank') !== -1)
 		blank = true;
 
-	if(typeof imagesDistribution[index] !== 'undefined')
+	const distribution = view.distribution.distribution;
+
+	if(distribution[index])
 	{
 		each:
-		for(let key in imagesDistribution[index])
+		for(const item of distribution[index])
 		{
-			if(!contains || (img && !imagesDistribution[index][key].folder && !imagesDistribution[index][key].blank) || (folder && imagesDistribution[index][key].folder) || (blank && imagesDistribution[index][key].blank))	
+			if(!contains || (img && !item.folder && !item.blank) || (folder && item.folder) || (blank && item.blank))	
 			{
-				callback(imagesDistribution[index][key]);
+				callback(item);
 
 				if(onlyFirstMeet)
 					break each;
@@ -2694,56 +4085,1030 @@ function eachImagesDistribution(index, contains, callback, first = false, notFou
 	}
 }
 
-var touchTimeout, mouseOut = {lens: false, body: false}, touchStart = false, magnifyingGlassOffset = false, readingCurrentPath = false, readingCurrentBookmarks = undefined, zoomMoveData = {}, magnifyingGlassScroll = {scrollTop: false, time: 0}, readingDragScroll = false, gamepadScroll = false, readingIsCanvas = false, readingFile = false, gamepadAxesNow = 0;
+function getImage(index = 0, fallback = true)
+{
+	if(imagesData[index])
+		return imagesData[index];
+
+	if(!fallback)
+		return false;
+
+	return imagesData[Object.keys(imagesData)[0]];
+}
+
+function getImageByPosition(position = 0, subindex = 0)
+{
+	let image = false;
+	let _images = [];
+	let _subindex = 0;
+
+	for(let key in imagesData)
+	{
+		if(position === false || position == imagesData[key].position)
+		{
+			image = imagesData[key];
+			_images.push(image);
+
+			if(_subindex === subindex)
+				break;
+
+			_subindex++;
+		}
+	}
+
+	if(subindex === false)
+		return _images.length ? _images : ([image] || [imagesData[Object.keys(images)[0]]]);
+
+	return image || imagesData[Object.keys(imagesData)[0]];
+}
+
+function getImageByName(name = '')
+{
+	for(let key in imagesData)
+	{
+		if(p.basename(imagesData[key].path) === name)
+			return imagesData[key];
+	}
+
+	return false;
+}
+
+var generateEbookPagesDelayedST = false, generateEbookPagesCancel = false;
+
+function generateEbookPagesDelayed()
+{
+	if(!readingIsEbook) return;
+
+	clearTimeout(generateEbookPagesDelayedST);
+	generateEbookPagesCancel = true;
+
+	ebook.createRenders(_ebook.chaptersPages ? _ebook.chaptersPages.length : 1);
+
+	generateEbookPagesDelayedST = setTimeout(function(){
+
+		generateEbookPagesCancel = false;
+		generateEbookPages(false, true);
+
+	}, 300);
+}
+
+function readingMargin(data = false)
+{
+	if(readingIsEbook && _config.readingEbook.integrated)
+	{
+		return {
+			margin: 0,
+			top: 0,
+			bottom: 0,
+			left: 0,
+			right: 0,
+		};
+	}
+	else
+	{
+		return {
+			margin: data && data.margin !== undefined ? data.margin : _config.readingMargin.margin,
+			top: _config.readingWebtoon ? 0 : (data && data.top !== undefined ? data.top : _config.readingMargin.top),
+			bottom: _config.readingWebtoon ? 0 : (data && data.bottom !== undefined ? data.bottom : _config.readingMargin.bottom),
+			left: data && data.left !== undefined ? data.left : _config.readingMargin.left,
+			right: data && data.right !== undefined ? data.right : _config.readingMargin.right,
+		};
+	}
+}
+
+function readingHorizontalsMargin(data = false)
+{
+	if(readingIsEbook && _config.readingEbook.integrated)
+	{
+		return {
+			margin: 0,
+			top: 0,
+			bottom: 0,
+			left: 0,
+			right: 0,
+		};
+	}
+	else
+	{
+		return {
+			margin: data && data.horizontalsMargin !== undefined ? data.horizontalsMargin : _config.readingHorizontalsMargin.margin,
+			top: _config.readingWebtoon ? 0 : (data && data.horizontalsTop !== undefined ? data.horizontalsTop : _config.readingHorizontalsMargin.top),
+			bottom: _config.readingWebtoon ? 0 : (data && data.horizontalsBottom !== undefined ? data.horizontalsBottom : _config.readingHorizontalsMargin.bottom),
+			left: data && data.horizontalsLeft !== undefined ? data.horizontalsLeft : _config.readingHorizontalsMargin.left,
+			right: data && data.horizontalsRight !== undefined ? data.horizontalsRight : _config.readingHorizontalsMargin.right,
+		};
+	}
+}
+
+function readingImageClip()
+{
+	if(readingIsEbook)
+	{
+		return {
+			top: 0,
+			bottom: 0,
+			left: 0,
+			right: 0
+		};
+	}
+	else
+	{
+		return _config.readingImageClip;
+	}
+}
+
+var onLoadCallback = false, onLoadPromise = false, isLoaded = false;
+
+async function isLoad()
+{
+	let readingHeaderLoading = template._barHeader().querySelector('.reading-header-loading');
+	if(readingHeaderLoading) readingHeaderLoading.classList.remove('reading-header-loading');
+
+	if(onLoadCallback) onLoadCallback();
+	onLoadCallback = false;
+
+	if(onLoadPromise)
+		onLoadPromise.resolve();
+
+	onLoadPromise = false;
+	isLoaded = true;
+}
+
+function onLoad(callback)
+{
+	onLoadCallback = callback;
+}
+
+var _ebook = false;
+
+async function getEbookConfig(configReadingEbook = false)
+{
+	configReadingEbook = configReadingEbook || _config.readingEbook;
+
+	let rect = template._contentRight().getBoundingClientRect();
+
+	if(rect.width == 0 || rect.height == 0)
+	{
+		for(let i = 0; i < 100; i++)
+		{
+			await app.sleep(20);
+
+			rect = template._contentRight().getBoundingClientRect();
+
+			if(rect.width != 0 && rect.height != 0)
+				break;
+		}
+	}
+
+	let renderZone = {
+		width: ((rect.width - (readingMargin().left * (doublePage.active() ? 3 : 2))) / (doublePage.active() ? 2 : 1)) - (readingViewIs('scroll') ? 12 : 0),
+		height: (rect.height - (readingMargin().top * 2)),
+	};
+
+	let width = 0;
+	let height = 0;
+
+	let integratedMode = configReadingEbook.integrated;
+	let ratio = configReadingEbook.ratio;
+
+	if(!integratedMode && ratio > 0.4)
+	{
+		if(renderZone.height / renderZone.width > ratio)
+		{
+			width = renderZone.width;
+			height = renderZone.width * ratio;
+		}
+		else
+		{
+			width = renderZone.height / ratio;
+			height = renderZone.height;
+		}
+	}
+	else
+	{
+		width = renderZone.width;
+		height = renderZone.height;
+	}
+
+	let maxWidth = configReadingEbook.maxWidth;
+	let minMargin = configReadingEbook.minMargin;
+	let verticalMargin = (readingViewIs('scroll') && !doublePage.active()) ? 0 : configReadingEbook.verticalMargin;
+
+	let horizontalMargin = Math.round((width - maxWidth) / 2);
+
+	if(horizontalMargin < minMargin)
+		horizontalMargin = minMargin;
+
+	return {
+		width: width,
+		height: height,
+		colors: readingEbook.getThemeColors(configReadingEbook.colorsTheme),
+		fontFamily: configReadingEbook.fontFamily,
+		fontSize: configReadingEbook.fontSize,
+		fontWeight: configReadingEbook.fontWeight,
+		italic: configReadingEbook.italic,
+		forceLeftToRight: configReadingEbook.forceLeftToRight,
+		textAlign: configReadingEbook.textAlign,
+		margin: {
+			top: verticalMargin,
+			right: horizontalMargin,
+			bottom: verticalMargin,
+			left: horizontalMargin,
+		},
+		letterSpacing: configReadingEbook.letterSpacing,
+		wordSpacing: configReadingEbook.wordSpacing,
+		pSpacing: configReadingEbook.pSpacing,
+		pLineHeight: configReadingEbook.pLineHeight,
+		lineHeight: configReadingEbook.lineHeight,
+	};
+}
+
+async function updateEbook(save)
+{
+	if(save)
+		generateEbookPagesDelayed();
+}
+
+async function fastUpdateEbookPages(readingEbook = false, resize = false)
+{
+	if(!readingIsEbook) return;
+
+	let ebookConfig = await getEbookConfig(readingEbook);
+
+	for(let index in imagesData)
+	{
+		if(imagesData[index].fixedLayout)
+			continue;
+
+		imagesData[index].width = ebookConfig.width;
+		imagesData[index].height = ebookConfig.height;
+		imagesData[index].aspectRatio = ebookConfig.width / ebookConfig.height;
+	}
+
+	if(resize)
+	{
+		view.distribution.calculate();
+		view.disposeImages();
+		view.calculateView();
+		view.stayInLine.recalculate();
+	}
+
+	if(_ebook)
+	{
+		_ebook.updateConfig(ebookConfig);
+		render.setEbookConfigChanged(ebookConfig);
+
+		let iframes = template._contentRight().querySelectorAll('oc-img iframe');
+
+		for(let i = 0, len = iframes.length; i < len; i++)
+		{
+			let iframe = iframes[i];
+			await _ebook.applyConfigToHtml(iframe.contentDocument, JSON.parse(iframe.dataset.chapter));
+		}
+	}
+}
+
+var hasGenerateEbookPages = false;
+
+async function generateEbookPages(end = false, reset = false, fast = false, imagePath = false, first = false)
+{
+	// Avoid running multiple times at the same time
+	if(hasGenerateEbookPages)
+	{
+		hasGenerateEbookPages = 1;
+
+		return;
+	}
+	else if(!nextOpenChapterProgress && view.distribution?.distribution?.length && !imagePath)
+	{
+		const _doublePage = view.distribution.distribution[0].length > 1 ? true : false;
+
+		let index = currentIndex;
+
+		if(_doublePage && !doublePage.active())
+			index = Math.ceil(index / 2);
+
+		let imageIndex = view.distribution.distribution[index - 1][0].index;
+		let page = _ebook.pages[imageIndex - 1];
+
+		let chapterIndex = page.chapterIndex;
+		let chapterProgress = page.chapterProgress;
+
+		setNextOpenChapterProgress(chapterIndex, chapterProgress);
+	}
+
+	hasGenerateEbookPages = true;
+
+	let ebookConfig = await getEbookConfig();
+	let ebookPages = await readingFileC.ebookPages(ebookConfig);
+
+	if(hasGenerateEbookPages === 1) // Priorize last generateEbookPages request
+	{
+		hasGenerateEbookPages = false;
+		generateEbookPages(end, reset, fast);
+	}
+	else if(!generateEbookPagesCancel && onReading)
+	{
+		items = [], imagesData = {}, imagesDataClip = {}, imagesPath = {}, imagesNum = 0, contentNum = 0, pageRangeHistory = [];
+
+		let comics = [];
+
+		for(let i = 0, len = ebookPages.pages.length; i < len; i++)
+		{
+			let page = ebookPages.pages[i];
+			let index = i + 1;
+			let path = page.path+'?page='+i;
+
+			imagesPath[path] = index;
+
+			const chapter = page.chapter;
+
+			const width = chapter.fixedLayout ? chapter.width : ebookConfig.width;
+			const height = chapter.fixedLayout ? chapter.height : ebookConfig.height;
+
+			imagesData[index] = Object.assign(page, {path, index, width, height, aspectRatio: (width / height), name: page.name, fixedLayout: chapter.fixedLayout, pdf: false, ebook: true, folder: false});
+			items.push(imagesData[index]);
+
+			comics.push({
+				index: i + 1,
+				sha: sha1(path),
+				name: ''.replace(/\.[^\.]*$/, ''),
+				image: '',
+				path: path,
+				mainPath: '', // mainPath,
+				size: false,
+				pdf: false,
+				ebook: true,
+				folder: false,
+			});
+		}
+
+		_ebook = await readingFileC.ebook();
+
+		if(reset)
+			await render.reset();
+		else
+			await render.setFile(readingFileC, false, 'ebook');
+
+		render.setImagesData(imagesData);
+		filters.setImagesPath(imagesPath, readingCurrentPath);
+
+		setCurrentComics(comics);
+
+		imagesNum = contentNum = ebookPages.pages.length;
+
+		view.start(first);
+		view.distribution.htmlItems();
+		view.disposeImages();
+		view.calculateView(first);
+
+		handlebarsContext.ebookLandmarks = ebookPages.landmarks;
+		handlebarsContext.ebookToc = ebookPages.toc;
+		handlebarsContext.ebookPages = imagesNum;
+
+		template.loadContentLeft('reading.content.left.ebook.html', true);
+		template._contentLeft().firstElementChild.style.height = 'calc(100% - 66px)';
+		events.eventRange();
+		sidebar.setScrollTop(0, false, false);
+
+		// await render.render(currentIndex);
+
+		if(imagePath)
+		{
+			let imageName = p.basename(imagePath);
+			let chapterIndex = +app.extract(/^([0-9]+)\_sortonly/, imageName, 1);
+
+			currentIndex = _ebook.chaptersPagesInfo[chapterIndex].startPage + 1;
+		}
+
+		currentIndex = imagesData[currentIndex].position + 1;
+
+		let newIndex = currentIndex;
+
+		if(readingManga())
+			newIndex = (view.distribution.total - newIndex) + 1;
+
+		if(nextOpenChapterProgress)
+			goToChapterProgress(nextOpenChapterProgress.chapterIndex, nextOpenChapterProgress.chapterProgress, false);
+		else
+			goToIndex(newIndex, false, end, end);
+
+		if(readingViewIs('scroll'))
+			view.stayInLine.getPreviusContentSize();
+
+		setTimeout(function(){onScroll.call(template._contentRight().firstElementChild)}, 500);
+
+		reading.isLoad();
+	}
+
+	hasGenerateEbookPages = false;
+}
+
+function currentImagePosition()
+{
+	let index = currentIndex - 1;
+
+	if(readingManga())
+		index = (view.distribution.total - index) - 1;
+
+	return index;
+}
+
+function currentImagePage()
+{
+	return view.distribution.distribution?.[currentImagePosition()]?.[0]?.index || 0;
+}
+
+function currentImageIndex()
+{
+	return currentImagePage() - 1;
+}
+
+function flattenToc(items)
+{
+	if(!Array.isArray(items))
+		return [];
+
+	return items.flatMap(({subitems, ...item}) => [
+		item,
+		...flattenToc(subitems)
+	]);
+}
+
+async function currentToc(index = false)
+{
+	index = index || currentImagePage();
+	let closest = {page: -1};
+
+	if(!readingIsEbook && !readingIsPdf) return closest;
+
+	let toc = readingIsEbook ? _ebook?.toc : (readingFileC ? await readingFileC.readPdfToc() : false);
+	if(!toc || !toc.length) return closest;
+
+	toc = flattenToc(toc);
+	
+	for(let i = 0, len = toc.length; i < len; i++)
+	{
+		if(toc[i].page <= index && toc[i].page > closest.page)
+			closest = toc[i];
+	}
+
+	return closest;
+}
+
+function applyMoveZoomWithMouse(pageX = false, pageY = false)
+{
+	pageX = pageX || currentMousePosition.pageX;
+	pageY = pageY || currentMousePosition.pageY;
+
+	const withLimits = notCrossZoomLimits(0, 0);
+
+	const widthM = contentRightRect.width / 2;
+	const heightM = contentRightRect.height / 2;
+
+	// Calculate multipler (1.5) from withLimits.height and withLimits.width
+	const x = -(pageX - zoomMoveData.x) * (withLimits.maxX / widthM * 1.5);
+	const y = -(pageY - zoomMoveData.y) * (withLimits.maxY / heightM * 1.5);
+
+	dragZoom(x, y);
+
+	scalePrevData.tranX = zoomMoveData.tranX;
+	scalePrevData.tranY = zoomMoveData.tranY;
+}
+
+// Events functions
+var contentRightRect = false, touchevents = {active: false, start: false, distance: 0, scale: 0, maxTouches: 0, numTouches: 0, touches: [], touchesXY: [], type: 'move'}, pointermoveEvent = false;
+var ebookHasSelection = false;
+
+function showHiddenBars(event, onclick = false)
+{
+	const pageX = app.pageX(event);
+	const pageY = app.pageY(event);
+
+	const delay = onclick ? 0 : config.readingShowBarsDelay * 1000;
+
+	let showedSome = false;
+
+	if(hiddenContentLeft || hiddenBarHeader) // Show content left and header bar when they are hidden
+	{
+		const areas = {
+			left: isFullScreen ? 3 : themeVars.sideBarWidth,
+			top: isFullScreen ? 3 : themeVars.headerBarHeight + themeVars.tabsBarHeight,
+			scrollBar: {
+				left: themeVars.sideBarWidth - 12,
+				left2: themeVars.sideBarWidth,
+				right: window.innerWidth - 12,
+			},
+		};
+
+		const canShow = !hideContentRunningST && (!config.readingShowBarsOnClick || onclick);
+		const inTopArea = pageY < areas.top && pageX < areas.scrollBar.right && (!(pageX >= areas.scrollBar.left && pageX <= areas.scrollBar.left2) || hiddenContentLeft);
+
+		if(inTopArea)
+		{
+			if(hiddenBarHeader && !shownBarHeader && !shownContentLeft && canShow)
+			{
+				hideContentST = setTimeout(function(){
+
+					dom.queryAll('.bar-header, .tabs-bar').addClass('show');
+					reading.setShownBarHeader(true);
+					hideWindowButtons(false, true);
+
+					const tabsBar = document.querySelector('.tabs-bar');
+					tabsBar.style.webkitAppRegion = 'none';
+
+					setTimeout(function() {
+
+						// Force reflow
+						tabsBar.style.webkitAppRegion = '';
+
+					}, 200);
+
+				}, delay);
+
+				hideContentRunningST = true;
+
+				showedSome = true;
+			}
+		}
+		else if(pageX < areas.left)
+		{
+			if(hiddenContentLeft && !shownContentLeft && !shownBarHeader && canShow)
+			{
+				hideContentST = setTimeout(function(){
+
+					dom.query('.content-left').addClass('show');
+					reading.setShownContentLeft(true, true);
+
+				}, delay);
+
+				hideContentRunningST = true;
+
+				showedSome = true;
+			}
+		}
+		else
+		{
+			clearTimeout(hideContentST);
+			hideContentRunningST = false;
+		}
+
+		if(shownBarHeader && pageY > themeVars.headerBarHeight + themeVars.tabsBarHeight + 48 && !document.querySelector('.menu-simple.a, .title-bar-menu.show'))
+		{
+			clearTimeout(hideContentST);
+
+			dom.queryAll('.bar-header, .tabs-bar').removeClass('show');
+			reading.setShownBarHeader(false);
+			hideWindowButtons(true, true);
+
+			hideContentRunningST = false;
+		}
+
+		if(shownContentLeft && pageX > view.leftSize().width + 48)
+		{
+			clearTimeout(hideContentST);
+
+			dom.query('.content-left').removeClass('show');
+			reading.setShownContentLeft(false);
+
+			hideContentRunningST = false;
+		}
+	}
+
+	return showedSome;
+}
+
+function pointermove(event)
+{
+	pointermoveEvent = event;
+
+	let pageX = app.pageX(event);
+	let pageY = app.pageY(event);
+
+	currentMousePosition = {
+		pageX: pageX,
+		pageY: pageY,
+	};
+
+	if(haveZoom) // Drag Image zoom
+	{
+		if(contentRightRect === false)
+		{
+			contentRightRect = {...getViewportRect(), width: view.rightSize.width};
+		}
+
+		if(config.readingMoveZoomWithMouse && (!readingViewIs('scroll') || config.readingScrollWithMouse) && event instanceof PointerEvent)
+		{
+			if(pageX > contentRightRect.left && pageY > contentRightRect.top)
+			{
+				event.preventDefault();
+				applyMoveZoomWithMouse(pageX, pageY);
+			}
+		}
+		else if(zoomMoveData.active && !(event instanceof TouchEvent))
+		{
+			event.preventDefault();
+
+			let x = pageX - zoomMoveData.x;
+			let y = pageY - zoomMoveData.y;
+
+			dragZoom(x, y);
+
+			panels.removeAllMasks(true);
+		}
+	}
+
+	if(touchevents.active && event instanceof TouchEvent)
+	{
+		let touches = event.touches;
+
+		// Simulate touch with 2 fingers
+		//if(event.ctrlKey)
+		//	touches = [event.touches[0], touchevents.touches[1] || touchevents.touches[0]];
+
+		let numTouches = touches.length;
+
+		if(numTouches > touchevents.maxTouches)
+			touchevents.maxTouches = numTouches;
+
+		if(!touchevents.start)
+		{
+			let touchesXY = app.touchesXY(event);
+			let maxDiff = Math.max(...app.touchesDiff(touchevents.touchesXY, touchesXY));
+
+			if(maxDiff > 10)
+			{
+				const rect = getViewportRect();
+
+				touchevents.start = true;
+				touchevents.type = numTouches > 1 || haveZoom || readingViewIs('scroll') ? 'zoom' : 'move';
+				touchevents.touches = touches;
+				touchevents.numTouches = numTouches;
+				touchevents.contentRect = rect;
+				touchevents.distance = numTouches > 1 ? app.distance(touches[0].pageX, touches[0].pageY, touches[1].pageX, touches[1].pageY) : 0;
+
+				touchevents.speed = [{
+					time: performance.now(),
+					pageX: app.pageX(event),
+				}];
+
+				if(readingViewIs('compact'))
+					pageTransitions.touchstart(event, touchevents);
+			}
+		}
+
+		if(touchevents.start)
+		{
+			let contentRight = template._contentRight();
+
+			if(touchevents.type == 'move')
+			{
+				let pageX = app.pageX(event);
+
+				let left = (touchevents.contentRect.width * (currentIndex - 1));
+				left = left - (pageX - app.pageX(touchevents));
+
+				if(left < 0)
+					left = 0;
+				else if(left > (contentNum - 1) * touchevents.contentRect.width)
+					left = (contentNum - 1) * touchevents.contentRect.width;
+
+				if(readingViewIs('compact'))
+				{
+					if(left != 0 && left != (contentNum - 1) * touchevents.contentRect.width)
+						pageTransitions.touchmove(event, touchevents);
+				}
+				else
+				{
+					dom.this(contentRight).find('.reading-body > div, .reading-lens > div > div', true).css({
+						transition: '0s',
+						transform: 'translate('+(-left)+'px, 0)',
+					});
+				}
+
+				if(touchevents.speed.length > 2)
+					touchevents.speed.shift();
+
+				touchevents.speed.push({
+					time: performance.now(),
+					pageX: pageX,
+				});
+			}
+			else if(touchevents.type == 'zoom')
+			{
+				if(numTouches > 1 && touchevents.numTouches > 1)
+				{
+					let distance = app.distance(touches[0].pageX, touches[0].pageY, touches[1].pageX, touches[1].pageY);
+
+					let scale = distance / touchevents.distance * currentScale;
+					touchevents.scale = scale;
+
+					let pageX = ((touches[0].pageX - touches[1].pageX) / 2) + touches[1].pageX;
+					let pageY = ((touches[0].pageY - touches[1].pageY) / 2) + touches[1].pageY;
+
+					currentPageXY.x = pageX;
+					currentPageXY.y = pageY;
+
+					//x = pageX - ((touchevents.touches[0].pageX - touchevents.touches[1].pageX) + touchevents.touches[0].pageX);
+					//y = pageY - ((touchevents.touches[0].pageY - touchevents.touches[1].pageY) + touchevents.touches[0].pageY);
+
+					//dragZoom(x, y);
+					applyScale(false, scale);
+				}
+				else if(touchevents.numTouches == 1 && haveZoom)
+				{
+					let x = app.pageX(event) - app.pageX(touchevents);
+					let y = app.pageY(event) - app.pageY(touchevents);
+
+					dragZoom(x, y);
+				}
+			}
+		}
+
+		contentRightRect = false;
+	}
+
+	if(readingDragScroll) // Drag to scroll
+	{
+		event.preventDefault();
+
+		if(!readingDragScroll.start)
+		{
+			if(Math.abs(pageY - readingDragScroll.pageY) > 16 && !ebookHasSelection)
+			{
+				readingDragScroll.pageY = pageY;
+				readingDragScroll.start = true;
+				dom.query('body').addClass('dragging');
+
+				panels.removeAllMasks(true);
+			}
+		}
+		else
+		{
+			if(readingDragScroll.speed.length > 2)
+				readingDragScroll.speed.shift();
+
+			readingDragScroll.speed.push({
+				time: performance.now(),
+				pageY: pageY,
+			});
+
+			readingDragScroll.content.scrollTop(readingDragScroll.scrollTop - (pageY - readingDragScroll.pageY));
+		}
+	}
+
+	showHiddenBars(event, false);
+	hideMouseInFullscreen(event);
+}
+
+var hideMouseInFullscreenStatus = {
+	st: false,
+	hidden: false,
+	event: false,
+};
+
+function hideMouseInFullscreen(event = false, hide = false)
+{
+	const status = hideMouseInFullscreenStatus;
+	event = event || status.event;
+	status.event = event;
+
+	if(hide)
+	{
+		const contentRight = template._contentRight();
+		const validCoords = event && Number.isFinite(event.clientX) && Number.isFinite(event.clientY);
+		const element = validCoords ? document.elementFromPoint(event.clientX, event.clientY) : false;
+
+		if((!validCoords && !event?.target) || contentRight.contains(element || event.target))
+		{
+			if(!status.hidden)
+			{
+				const app = document.querySelector('.app');
+				app.classList.add('hide-mouse');
+			}
+
+			status.hidden = true;
+		}
+
+		status.st = false;
+	}
+	else
+	{
+		if(status.hidden)
+		{
+			const app = document.querySelector('.app');
+			app.classList.remove('hide-mouse');
+		}
+
+		clearTimeout(status.st);
+
+		if(/*!isFullScreen || */!onReading)
+			return;
+
+		status.st = setTimeout(function() {
+
+			hideMouseInFullscreen(event, true);
+
+		}, isFullScreen ? 2000 : 2000);
+
+		status.hidden = false;
+	}
+}
+
+function showHideHeader()
+{
+	const show = document.querySelector('.tabs-bar-hover'); // document.querySelector('.menu-simple.a, .title-bar-menu.show, .tabs-bar-hover');
+	dom.queryAll('.bar-header, .tabs-bar').class(show, 'show');
+	hideWindowButtons(!show);
+}
+
+function hideContentLeftAndHeader()
+{
+	if(hiddenContentLeft || hiddenBarHeader) // Show content left and header bar when they are hidden
+	{
+		clearTimeout(hideContentST);
+		hideContentRunningST = false;
+
+		if(shownBarHeader && !document.querySelector('.menu-simple.a, .title-bar-menu.show'))
+		{
+			dom.queryAll('.bar-header, .tabs-bar').removeClass('show');
+			reading.setShownBarHeader(false);
+			hideWindowButtons(true);
+		}
+
+		if(shownContentLeft)
+		{
+			dom.query('.content-left').removeClass('show');
+			reading.setShownContentLeft(false);
+		}
+	}
+}
+
+function pointerleave()
+{
+	if(!onReading || !isLoaded)
+		return;
+
+	return; // This have some errors
+
+	hideContentLeftAndHeader();
+}
+
+function cursorleave()
+{
+	if(!onReading || !isLoaded)
+		return;
+
+	hideContentLeftAndHeader();
+}
+
+electron.ipcRenderer.on('cursorleave', cursorleave);
+
+function mousedown(event)
+{
+	if(haveZoom)
+	{
+		if(((!config.readingMoveZoomWithMouse || !(event instanceof MouseEvent)) || (readingViewIs('scroll') && !config.readingScrollWithMouse)) && event.button == 0)
+		{
+			if(!(event instanceof TouchEvent))
+				event.preventDefault();
+
+			zoomMoveData = {
+				x: app.pageX(event),
+				y: app.pageY(event),
+				active: true,
+			};
+
+			dom.query('body').addClass('dragging');
+		}
+	}
+
+	if(event instanceof TouchEvent)
+	{
+		if(!event.target.closest('.reading-lens'))
+		{
+			if(!touchevents.active)
+			{
+				touchevents.active = true;
+				touchevents.start = false;
+				touchevents.touches = event.touches;
+				touchevents.touchesXY = app.touchesXY(event);
+				touchevents.maxTouches = event.touches.length;
+			}
+			else
+			{
+				let len = event.touches.length;
+
+				if(len > touchevents.maxTouches)
+				{
+					let touches = [];
+
+					for(let i = 0, _len = touchevents.touches.length; i < _len; i++)
+					{
+						touches.push(touchevents.touches[i]);
+					}
+
+					for(let i = touchevents.touches.length; i < len; i++)
+					{
+						touches.push(event.touches[i]);
+					}
+
+					touchevents.touchesXY = app.touchesXY({touches: touches});
+					touchevents.touches = touches;
+					touchevents.maxTouches = len;
+				}
+			}
+		}
+	}
+}
+
+function mouseenter()
+{
+	isMouseenter.document = true;
+}
+
+function _mouseleave()
+{
+	isMouseenter.document = false;
+}
+
+let initialized = false;
+
+function init()
+{
+	if(initialized)
+		return;
+
+	initialized = true;
+
+	app.event(window, 'resize', resized);
+}
+
+var touchTimeout, mouseleave = {lens: false, body: false, window: false}, isMouseenter = {document: true}, touchStart = false, magnifyingGlassOffset = false, readingCurrentPath = false, zoomMoveData = {}, magnifyingGlassScroll = {scrollTop: false, time: 0}, readingDragScroll = false, gamepadScroll = false, readingIsPdf = false, readingIsEbook = false, readingFile = false, readingFileC = false, gamepadAxesNow = 0, scrollInStart = false, scrollInEnd = false, trackingCurrent = false;
 
 //It starts with the reading of a comic, events, argar images, counting images ...
-async function read(path, index = 1, end = false, isCanvas = false)
+async function read(path, index = 1, end = false, isPdf = false, isEbook = false, imagePath = false)
 {
-	images = {}, imagesData = {}, imagesDataClip = {}, imagesPath = {}, imagesNum = 0, contentNum = 0, imagesNumLoad = 0, currentIndex = index, foldersPosition = {}, currentScale = 1, previousScrollTop = 0, scalePrevData = {tranX: 0, tranX2: 0, tranY: 0, tranY2: 0, scale: 1, scrollTop: 0}, originalRect = false;
+	init();
+
+	resetZoomState();
+
+	let contentRightIndex = template.contentRightIndex();
+
+	items = [], imagesData = {}, imagesDataClip = {}, imagesPath = {}, imagesNum = 0, contentNum = 0, imagesNumLoad = 0, currentIndex = index, scrollInStart = false, scrollInEnd = false, prevChangeHeaderButtons = {}, trackingCurrent = false, pageRangeHistory = [], showComicSkip = false, ebookHasSelection = false;
+
+	isLoaded = false;
+	magnifyingGlassPosition.mode = false;
 
 	loadReadingConfig(currentReadingConfigKey);
 
-	saveReadingProgressA = false;
+	if(!fromSkip)
+		progress.activeSave(false);
+
+	fromSkip = false;
 
 	readingCurrentPath = path;
 
-	if(typeof storage.get('bookmarks') !== 'undefined' && typeof storage.get('bookmarks')[dom.indexMainPathA()] !== 'undefined')
-		readingCurrentBookmarks = storage.get('bookmarks')[dom.indexMainPathA()];
-	else
-		readingCurrentBookmarks = undefined;
+	filters.setImagesPath(false);
 
-	goToImageCL(index, false);
-
-	$(window).off('keydown touchstart touchend mouseup mousemove touchmove mouseout click resize');
+	$(window).off('keydown touchstart touchend mouseup mousemove touchmove mouseleave click');
 	template.contentRight().off('mousewheel');
 	$('.reading-body, .reading-lens').off('mousemove');
 	$('.reading-lens').off('mousemove');
-	$('.reading-body').off('mouseout mouseenter mousedown touchstart touchmove');
+	$('.reading-body').off('mouseleave mouseenter mousedown touchstart touchmove');
 	$('.content-right > div > div').off('scroll');
 
 	events.eventHover();
 
 	onReading = _onReading = true;
 
-	template.contentRight().on('mousewheel', function(e) {
+	let resolve = false;
+	let promise = new Promise(function(_resolve){
+		resolve = _resolve;
+	});
+	onLoadPromise = {promise: promise, resolve: resolve};
 
-		if(onReading && (e.originalEvent.ctrlKey || !readingViewIs('scroll')))
+	const contentRight = template._contentRight();
+	// contentRight.classList.add(`reading-page-view-${_config.readingView}`);
+	const readingLens = contentRight.querySelector('.reading-lens');
+
+	app.event(contentRight, 'mousewheel', function(event) {
+
+		if(onReading && isLoaded)
 		{
-			e.preventDefault();
-
-			if(e.originalEvent.wheelDelta / 120 > 0)
-				reading.zoomIn();
-			else
-				reading.zoomOut();
+			if(readingViewIs('scroll') && !event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey && reading.scrollNextOrPrevComic(event.wheelDelta / 120 > 0, true))
+			{
+				event.preventDefault();
+			}
 		}
 
 	});
 
-	template.contentRight('.reading-lens').on('mousewheel', function(e) {
+	app.event(readingLens, 'mousewheel', function(event) {
 
-		if(onReading && !haveZoom && readingViewIs('scroll'))
+		if(onReading && isLoaded && (!haveZoom || !event.ctrlKey) && readingViewIs('scroll'))
 		{
-			e.preventDefault();
+			event.preventDefault();
 
 			var content = template.contentRight().children();
 
@@ -2752,10 +5117,10 @@ async function read(path, index = 1, end = false, isCanvas = false)
 			else
 				var scrollTop = content.scrollTop();
 
-			if(e.originalEvent.wheelDelta / 120 > 0)
-				scrollTop -= 62;
+			if(event.wheelDelta / 120 > 0)
+				scrollTop -= 120;
 			else
-				scrollTop += 62;
+				scrollTop += 120;
 
 			magnifyingGlassScroll = {
 				scrollTop: scrollTop,
@@ -2769,15 +5134,21 @@ async function read(path, index = 1, end = false, isCanvas = false)
 
 	template.contentRight('.reading-body, .reading-lens').on('pointerdown', function(e) {
 
-		if(onReading && (!haveZoom || config.readingGlobalZoom) && readingViewIs('scroll'))
+		if(onReading && isLoaded && (!haveZoom || readingGlobalZoom()) && !config.readingScrollWithMouse && readingViewIs('scroll'))
 		{
-			if(e.originalEvent.pointerType != 'touch')
+			if(e.originalEvent.pointerType != 'touch' && e.originalEvent.button >= 0 && e.originalEvent.button <= 1)
 			{
 				// e.preventDefault();
 
 				var content = template.contentRight().children();
 
 				var pageY = e.originalEvent.touches ? e.originalEvent.touches[0].pageY : (e.pageY ? e.pageY : e.clientY);
+
+				if(readingDragScroll.endPromise)
+					readingDragScroll.endResolve();
+
+				let endResolve = false;
+				const endPromise = new Promise(resolve => endResolve = resolve);
 
 				readingDragScroll = {
 					start: false,
@@ -2788,6 +5159,8 @@ async function read(path, index = 1, end = false, isCanvas = false)
 						time: performance.now(),
 						pageY: pageY,
 					}],
+					endPromise,
+					endResolve,
 				};
 
 				content.stop(true);
@@ -2796,50 +5169,64 @@ async function read(path, index = 1, end = false, isCanvas = false)
 
 	});
 
+	let afterZoomingIn = false;
+
 	gamepad.setAxesEvent('reading', function(axes, status, now) {
 
-		if(onReading && !document.querySelector('.menu-simple.a'))
+		if(onReading && isLoaded && !document.querySelector('.menu-simple.a'))
 		{
 			if(status == 'start')
 				gamepadAxesNow = 0;
 
 			if(haveZoom)
 			{
-				if(status == 'start')
+				if(!zoomingIn)
 				{
-					zoomMoveData = {
-						x: 0,
-						y: 0,
-						active: true,
-					};
-				}
-
-				if(status == 'start' || status == 'move')
-				{
-					let x = 0;
-					let y = 0;
-
-					if(axes[0] || axes[1])
+					if(status == 'start' || afterZoomingIn)
 					{
-						x = axes[0];
-						y = axes[1];
-					}
-					else if(!config.readingMagnifyingGlass)
-					{
-						x = axes[2];
-						y = axes[3];
+						zoomMoveData = {
+							x: 0,
+							y: 0,
+							active: true,
+						};
+
+						afterZoomingIn = false;
 					}
 
-					let speed = gamepadAxesNow ? now - gamepadAxesNow : 16;
+					if(status == 'start' || status == 'move')
+					{
+						let x = 0;
+						let y = 0;
 
-					x = zoomMoveData.x = zoomMoveData.x + -(x * speed);
-					y = zoomMoveData.y = zoomMoveData.y + -(y * speed);
+						if(axes[0] || axes[1])
+						{
+							x = axes[0];
+							y = axes[1];
+						}
+						else if(!config.readingMagnifyingGlass)
+						{
+							x = axes[2];
+							y = axes[3];
+						}
 
-					dragZoom(x, y);
+						let speed = gamepadAxesNow ? now - gamepadAxesNow : 16;
+
+						x = zoomMoveData.x = zoomMoveData.x + -(x * speed);
+						y = zoomMoveData.y = zoomMoveData.y + -(y * speed);
+
+						const diff = dragZoom(x, y);
+
+						zoomMoveData.x -= diff.x;
+						zoomMoveData.y -= diff.y;
+					}
+					else // status == 'end'
+					{
+						dragZoomEnd();
+					}
 				}
-				else // status == 'end'
+				else
 				{
-					dragZoomEnd();
+					afterZoomingIn = true;
 				}
 			}
 
@@ -2851,8 +5238,7 @@ async function read(path, index = 1, end = false, isCanvas = false)
 
 					if(magnifyingGlassPosition.x === false)
 					{
-						let contentRight = template._contentRight();
-						let rect = contentRight.getBoundingClientRect();
+						const rect = getViewportRect();
 
 						magnifyingGlassPosition.x = (rect.width / 2) + rect.left;
 						magnifyingGlassPosition.y = (rect.height / 2) + rect.top;
@@ -2895,6 +5281,8 @@ async function read(path, index = 1, end = false, isCanvas = false)
 					y = gamepadScroll.y = gamepadScroll.y + (y * speed);
 
 					gamepadScroll.content.scrollTop(gamepadScroll.scrollTop + y);
+
+					reading.scrollNextOrPrevComic(y < 0 ? true : false, true);
 				}
 				else // status == 'end'
 				{
@@ -2909,12 +5297,10 @@ async function read(path, index = 1, end = false, isCanvas = false)
 
 	gamepad.setAxesStepsEvent('reading', [0, 1], function(key, axes) {
 
-		if(onReading && !document.querySelector('.menu-simple.a'))
+		if(onReading && isLoaded && !document.querySelector('.menu-simple.a'))
 		{
 			if(!haveZoom && !readingViewIs('scroll'))
 			{
-				console.log(axes);
-
 				if(key == 0 && (axes[0] < 0 || (axes[2] < 0 && !config.readingMagnifyingGlass)))
 					goPrevious();
 				else if(key == 1 && (axes[0] > 0|| (axes[2] > 0 && !config.readingMagnifyingGlass)))
@@ -2954,9 +5340,12 @@ async function read(path, index = 1, end = false, isCanvas = false)
 		
 	});*/
 
+	app.event(document, 'mouseenter', mouseenter);
+	app.event(document, 'mouseleave', _mouseleave);
+
 	$(window).on('touchstart', function(e) {
 
-		if(onReading && config.readingMagnifyingGlass)
+		if(onReading && isLoaded && config.readingMagnifyingGlass)
 		{
 			touchStart = e;
 
@@ -2979,7 +5368,7 @@ async function read(path, index = 1, end = false, isCanvas = false)
 			y: y,
 		};
 
-		if(onReading && config.readingMagnifyingGlass && !readingTouchEvent)
+		if(onReading && isLoaded && config.readingMagnifyingGlass && !readingTouchEvent)
 		{
 			var readingBody = template.contentRight('.reading-body');
 
@@ -2999,36 +5388,36 @@ async function read(path, index = 1, end = false, isCanvas = false)
 			}
 		}
 
-	})
+	});
 
-	template.contentRight('.reading-body').on('mouseout', function(e) {
+	template.contentRight('.reading-body').on('mouseleave', function(event) {
 
-		if(onReading && config.readingMagnifyingGlass && !readingTouchEvent)
+		if(onReading && isLoaded && config.readingMagnifyingGlass && !readingTouchEvent)
 		{
-			mouseOut['body'] = true;
+			mouseleave.body = true;
 
-			if(mouseOut['lens'] == true) magnifyingGlassControl(0, e);
+			if(mouseleave.lens) magnifyingGlassControl(0, event);
 		}
 
-	})
+	});
 
-	template.contentRight('.reading-body').on('mouseenter', function(e) {
+	template.contentRight('.reading-body').on('mouseenter', function(event) {
 
-		if(onReading && config.readingMagnifyingGlass && !readingTouchEvent)
+		if(onReading && isLoaded && config.readingMagnifyingGlass && !readingTouchEvent)
 		{
-			mouseOut['body'] = false;
+			mouseleave.body = false;
 		}
 
-	})
+	});
 
-	$(window).on('mouseout', function(e) {
+	$(window).on('mouseleave', function(event) {
 
-		if(onReading && config.readingMagnifyingGlass && !readingTouchEvent)
+		if(onReading && isLoaded && config.readingMagnifyingGlass && !readingTouchEvent)
 		{
-			mouseOut['lens'] = true;
+			mouseleave.lens = true;
 
-			var x = e.originalEvent.touches ? e.originalEvent.touches[0].pageX : (e.pageX ? e.pageX : e.clientX);
-			var y = e.originalEvent.touches ? e.originalEvent.touches[0].pageY : (e.pageY ? e.pageY : e.clientY);
+			var x = event.originalEvent.touches ? event.originalEvent.touches[0].pageX : (event.pageX ? event.pageX : event.clientX);
+			var y = event.originalEvent.touches ? event.originalEvent.touches[0].pageY : (event.pageY ? event.pageY : event.clientY);
 
 			var rbHeight = template.contentRight('.reading-body').height();
 			var rbWidth = template.contentRight('.reading-body').width();
@@ -3037,25 +5426,25 @@ async function read(path, index = 1, end = false, isCanvas = false)
 
 			if(!(x > rbOffsetLeft && y > rbOffsetTop && x < (rbWidth + rbOffsetLeft) && y < (rbHeight + rbOffsetTop)))
 			{
-				magnifyingGlassControl(0, e);
+				magnifyingGlassControl(0, event);
 			}
 		}
 
-	})
+	});
 
-	template.contentRight('.reading-lens').on('mouseenter', function(e) {
+	app.event(readingLens, 'mouseenter', function() {
 
-		if(onReading && config.readingMagnifyingGlass && !readingTouchEvent)
+		if(onReading && isLoaded && config.readingMagnifyingGlass && !readingTouchEvent)
 		{
-			mouseOut['lens'] = false;
+			mouseleave.lens = false;
 		}
 
 	})
 
-	template.contentRight('.reading-lens').on('touchmove', function(e) {
+	app.event(readingLens, 'touchmove', function(event) {
 
-		let pageX = e.originalEvent.touches[0].pageX;
-		let pageY = e.originalEvent.touches[0].pageY;
+		let pageX = event.touches[0].pageX;
+		let pageY = event.touches[0].pageY;
 
 		let x = touchStart.originalEvent.touches[0].pageX;
 		let y = touchStart.originalEvent.touches[0].pageY;
@@ -3065,7 +5454,7 @@ async function read(path, index = 1, end = false, isCanvas = false)
 			y: pageY,
 		};
 
-		if(onReading && config.readingMagnifyingGlass && !haveZoom)
+		if(onReading && isLoaded && config.readingMagnifyingGlass && !haveZoom)
 		{
 			let readingLens = template.contentRight('.reading-lens');
 
@@ -3080,130 +5469,75 @@ async function read(path, index = 1, end = false, isCanvas = false)
 
 	});
 
-	template.contentRight('.reading-body, .reading-lens').on('mousedown touchstart', function(e) {
-
-		if(haveZoom)
-		{
-			e.preventDefault();
-
-			zoomMoveData = {
-				x: e.originalEvent.touches ? e.originalEvent.touches[0].pageX : (e.pageX ? e.pageX : e.clientX),
-				y: e.originalEvent.touches ? e.originalEvent.touches[0].pageY : (e.pageY ? e.pageY : e.clientY),
-				active: true,
-			};
-
-			$('body').addClass('dragging');
-		}
-
-	});
-
-	$(window).on('mousemove touchmove', function(e) {
-
-		var x = e.originalEvent.touches ? e.originalEvent.touches[0].pageX : (e.pageX ? e.pageX : e.clientX);
-		var y = e.originalEvent.touches ? e.originalEvent.touches[0].pageY : (e.pageY ? e.pageY : e.clientY);
-
-		if(haveZoom && zoomMoveData.active) // Drag Image zoom
-		{
-			e.preventDefault();
-
-			x = x - zoomMoveData.x;
-			y = y - zoomMoveData.y;
-
-			dragZoom(x, y);
-		}
-		
-		if(readingDragScroll) // Drag to scroll
-		{
-			e.preventDefault();
-
-			if(!readingDragScroll.start)
-			{
-				readingDragScroll.start = true;
-
-				$('body').addClass('dragging');
-			}
-
-			var pageY = e.originalEvent.touches ? e.originalEvent.touches[0].pageY : (e.pageY ? e.pageY : e.clientY);
-
-			if(readingDragScroll.speed.length > 2)
-				readingDragScroll.speed.shift();
-
-			readingDragScroll.speed.push({
-				time: performance.now(),
-				pageY: pageY,
-			});
-
-			readingDragScroll.content.scrollTop(readingDragScroll.scrollTop - (pageY - readingDragScroll.pageY));
-		}
-
-		if(hiddenContentLeft || hiddenBarHeader) // Show content left and header bar when they are hidden
-		{
-			if(y < 48)
-			{
-				if(hiddenBarHeader && !shownBarHeader && !shownContentLeft && !hideContentRunningST)
-				{
-					hideContentST = setTimeout(function(){
-
-						$('.bar-header').addClass('show');
-						reading.setShownBarHeader(true);
-
-					}, 300);
-
-					hideContentRunningST = true;
-				}
-			}
-			else if(x < 48)
-			{
-				if(hiddenContentLeft && !shownContentLeft && !shownBarHeader && !hideContentRunningST)
-				{
-					hideContentST = setTimeout(function(){
-
-						$('.content-left').addClass('show');
-						reading.setShownContentLeft(true);
-
-					}, 300);
-
-					hideContentRunningST = true;
-				}
-			}
-			else
-			{
-				clearTimeout(hideContentST);
-
-				hideContentRunningST = false;
-			}
-
-			if(shownBarHeader && y > template.barHeader().height() + 48)
-			{
-				clearTimeout(hideContentST);
-
-				$('.bar-header').removeClass('show');
-				reading.setShownBarHeader(false);
-
-				hideContentRunningST = false;
-			}
-
-			if(shownContentLeft && x > template.contentLeft().width() + 48)
-			{
-				clearTimeout(hideContentST);
-
-				$('.content-left').removeClass('show');
-				reading.setShownContentLeft(false);
-
-				hideContentRunningST = false;
-			}
-		}
-
-	});
+	app.event('.reading-body, .reading-lens', 'mousedown touchstart', mousedown);
+	app.event(window, 'pointermove touchmove', pointermove);
+	app.event(document, 'pointerleave', pointerleave);
 
 	$(window).on('mouseup touchend', function(e) {
 
-		if(haveZoom && zoomMoveData.active)
+		if(e.originalEvent instanceof TouchEvent)
 		{
-			dragZoomEnd();
+			if(e.originalEvent.touches.length == 0)
+			{
+				if(touchevents.active)
+				{
+					if(touchevents.start)
+					{
+						if(touchevents.type == 'move')
+						{
+							let first = touchevents.speed[0];
+							let last = touchevents.speed[touchevents.speed.length-1];
 
-			$('body').removeClass('dragging');
+							let dragSpeed = (first.pageX - last.pageX) / ((performance.now() - first.time) / 1000);
+
+							if(Math.abs(dragSpeed) > 120)
+							{
+								if(dragSpeed > 0)
+									reading.goNext();
+								else
+									reading.goPrev();
+							}
+							else
+							{
+								let diff = app.pageX(touchevents) - last.pageX;
+
+								if(Math.abs(diff) > touchevents.contentRect.width / 2)
+								{
+									if(diff > 0)
+										reading.goNext();
+									else
+										reading.goPrev();
+								}
+								else
+								{
+									goToIndex(currentIndex, true);
+								}
+							}
+						}
+						else if(touchevents.type == 'zoom' && touchevents.scale)
+						{
+							currentScale = touchevents.scale;
+						}
+					}
+					else if(touchevents.maxTouches > 1)
+					{
+						let pageX = ((touchevents.touches[0].pageX - touchevents.touches[1].pageX) / 2) + touchevents.touches[1].pageX;
+						let pageY = ((touchevents.touches[0].pageY - touchevents.touches[1].pageY) / 2) + touchevents.touches[1].pageY;
+
+						currentPageXY.x = pageX;
+						currentPageXY.y = pageY;
+
+						reading.resetZoom(true, true, false);
+					}
+				}
+
+				touchevents.start = false;
+				touchevents.active = false;
+			}
 		}
+
+		if(haveZoom && zoomMoveData.active)
+			dragZoomEnd();
 		
 		if(readingDragScroll)
 		{
@@ -3227,18 +5561,21 @@ async function read(path, index = 1, end = false, isCanvas = false)
 
 					readingDragScroll.content.stop(true).animate({scrollTop: (readingDragScroll.content.scrollTop() + moreScroll)+'px'}, duration * 1000, $.bez([0.22, 0.6, 0.3, 1]));
 				}
-
-				$('body').removeClass('dragging');
 			}
 
 			setTimeout(function(){reading.setReadingDragScroll(false)}, 10);
 		}
 
+		let dragging = document.querySelector('body.dragging');
+
+		if(dragging)
+			dragging.classList.remove('dragging');
+
 	});
 
 	$(window).on('click', function(e) {
 
-		if(onReading && config.readingMagnifyingGlass && readingTouchEvent)
+		if(onReading && isLoaded && config.readingMagnifyingGlass && readingTouchEvent)
 		{
 			var x = e.originalEvent.touches ? e.originalEvent.touches[0].pageX : (e.pageX ? e.pageX : e.clientX);
 			var y = e.originalEvent.touches ? e.originalEvent.touches[0].pageY : (e.pageY ? e.pageY : e.clientY);
@@ -3267,8 +5604,6 @@ async function read(path, index = 1, end = false, isCanvas = false)
 
 	})
 
-	$(window).on('resize', resizedWindow);
-
 	$(window).on('mousewheel touchstart', function(e) {
 
 		if(!zoomingIn)
@@ -3276,266 +5611,276 @@ async function read(path, index = 1, end = false, isCanvas = false)
 
 	});
 
-	template.contentRight().children('div').on('scroll', function(e) {
+	template.contentRight().children('div').on('scroll', onScroll);
 
-		if(activeOnScroll && readingViewIs('scroll'))
+	const _images = handlebarsContext.comics;
+	const len = _images.length;
+	contentNum = len;
+
+	imagesNum = 0;
+
+	for(let i = 0; i < len; i++)
+	{
+		if(!_images[i].folder)
+			imagesNum++;
+	}
+
+	readingIsPdf = isPdf;
+	readingIsEbook = isEbook;
+
+	if(readingFile) readingFile.destroy();
+	if(readingFileC) readingFileC.destroy();
+
+	readingFile = fileManager.file();
+	readingFileC = false;
+
+	render.setOnRender((doublePage.active() && imagesNum > 1 ? 2 : 1), function() {
+
+		const contentRight = template._contentRight();
+
+		dom.this(contentRight).find('.loading').remove();
+		dom.this(contentRight).find('.reading-body').css({opacity: 1});
+
+		if(!isPdf && !isEbook)
 		{
-			let scrollTop = this.scrollTop;
-
-			let center = 0;
-
-			let availableScroll = rightSize.scrollHeight - rightSize.height;
-			let centerOffset = (availableScroll < rightSize.height ? availableScroll : rightSize.height) / 2;
-
-			if(scrollTop < centerOffset)
-				center = scrollTop + (centerOffset * (scrollTop / centerOffset));
-			else if(scrollTop + centerOffset > availableScroll)
-				center = scrollTop + centerOffset + (centerOffset * (1 - (availableScroll - scrollTop) / centerOffset));
-			else
-				center = scrollTop + centerOffset;
-
-			let selIndex = false;
-			let closest = false;
-
-			toBreak:
-			for(let key1 in imagesFullPosition)
-			{
-				for(let key2 in imagesFullPosition[key1])
-				{
-					let position = imagesFullPosition[key1][key2];
-
-					if(position.top < center && position.bottom > center)
-					{
-						selIndex = +key1;
-						break toBreak;
-					}
-					else
-					{
-						let diff = Math.abs(position.center - center);
-
-						if(closest === false || diff < closest.diff)
-						{
-							selIndex = +key1;
-							closest = {center: position.center, diff: diff};
-						}
-					}
-				}
-			}
-
-			let imgHeight = imagesFullPosition[selIndex][0].bottom - imagesFullPosition[selIndex][0].top + (_config.readingMargin.top * 2);
-
-			let pageVisibility = Math.floor(imgHeight / rightSize.height);
-
-			maxPageVisibility = pageVisibility;
-
-			let contentHeightRes = pageVisibility > 0 ? ((rightSize.height * pageVisibility) - imgHeight) / pageVisibility : 0;
-
-			scrollPart = ((rightSize.height - contentHeightRes) - rightSize.height / pageVisibility);
-
-			currentPageVisibility = Math.round((previousScrollTop - (imagesFullPosition[selIndex][0].top - _config.readingMargin.top)) / scrollPart);
-
-			if(currentIndex != selIndex + 1)
-			{
-				if(currentScale != 1 && !(config.readingGlobalZoom && readingViewIs('scroll')))
-					reading.resetZoom();
-
-				var isBookmarkTrue = false;
-
-				eachImagesDistribution(selIndex, ['image'], function(image){
-
-					if(!isBookmarkTrue && images[image.index] && isBookmark(p.normalize(images[image.index].path)))
-						isBookmarkTrue = true;
-
-				});
-
-				var imageIndex = false;
-
-				eachImagesDistribution(selIndex, ['image', 'folder'], function(image){
-
-					if(!imageIndex)
-						imageIndex = image.index
-
-				});
-
-				if(imageIndex)
-				{
-					saveReadingProgressA = true;
-
-					goToImageCL(imageIndex, true);
-				}
-
-				currentIndex = selIndex + 1;
-			}
-
-			previousScrollTop = scrollTop;
+			setTimeout(function(){
+				view.getAllSizes(template.contentRightIndex());
+			}, 20);	
 		}
 
 	});
 
-	imagesNum = template.contentRight('.reading-body oc-img').length;
-	contentNum = template.contentRight('.reading-body .r-img:not(.blank)').length;
-
-	readingIsCanvas = isCanvas;
-
-	if(isCanvas)
+	if(isPdf)
 	{
-		readingFile = fileManager.fileCompressed(path);
-		await readingRender.setFile(readingFile, (config.readingMagnifyingGlass ? config.readingMagnifyingGlassZoom : false));
+		readingFileC = fileManager.fileCompressed(path);
+		await render.setFile(readingFileC, (config.readingMagnifyingGlass ? config.readingMagnifyingGlassZoom : false), 'pdf');
 
-		let _images = template.contentRight('.reading-body oc-img canvas').get();
+		// Avoid continue if another comic has been opened
+		if(contentRightIndex != template.contentRightIndex())
+			return;
 
-		for(let i = 0, len = _images.length; i < len; i++)
+		for(let i = 0; i < len; i++)
 		{
 			let image = _images[i];
-			let index = +image.dataset.index;
-			let width = +image.dataset.width;
-			let height = +image.dataset.height;
-			let path = image.dataset.path;
+			let index = +image.index;
+			let width = +image.size.width;
+			let height = +image.size.height;
+			let path = image.path;
 
-			images[index] = {index: index, path: path};
 			imagesPath[path] = index;
 
-			imagesData[index] = {width: width, height: height, aspectRatio: (width / height), name: image.dataset.name};
+			const rotated = (width > height) ? _config.readingRotateHorizontals : _config.readingRotate;
+
+			if(rotated == 1 || rotated == 2)
+				imagesData[index] = Object.assign(image, {width: height, height: width, aspectRatio: (height / width), rotated: rotated, name: image.name});
+			else
+				imagesData[index] = Object.assign(image, {width: width, height: height, aspectRatio: (width / height), rotated: rotated, name: image.name});
+
+			items.push(imagesData[index]);
 		}
 
-		readingRender.setImagesData(imagesData);
+		sidebar.sizes(imagesData, currentComics);
 
-		template.contentRight('.reading-body').css('display', 'block');
-		addHtmlImages();
-		disposeImages();
-		calculateView();
+		render.setImagesData(imagesData);
+		filters.setImagesPath(imagesPath, readingCurrentPath);
+
+		if(config.readingAutodetectWebtoon)
+			loadReadingConfig(currentReadingConfigKey);
+
+		view.start();
+		view.distribution.htmlItems();
+		view.disposeImages();
+		view.calculateView(true);
 
 		currentIndex = imagesData[currentIndex].position + 1;
+		let newIndex = currentIndex;
 
-		var newIndex = currentIndex;
-
-		if(_config.readingManga && !readingViewIs('scroll'))
-			newIndex = (indexNum - newIndex) + 1;
+		if(readingManga())
+			newIndex = (view.distribution.total - newIndex) + 1;
 
 		goToIndex(newIndex, false, end, end);
 
 		if(readingViewIs('scroll'))
-			previousContentHeight = template.contentRight().children('div').children('div').height();
+			view.stayInLine.getPreviusContentSize();
 
+		setTimeout(function(){onScroll.call(template._contentRight().firstElementChild)}, 500);
+
+		reading.isLoad();
+	}
+	else if(isEbook)
+	{
+		readingFileC = fileManager.fileCompressed(path);
+		await generateEbookPages(end, false, false, imagePath, true);
 	}
 	else
 	{
-		readingFile = false;
-		readingRender.setFile(false);
+		render.setFile(false, (config.readingMagnifyingGlass ? config.readingMagnifyingGlassZoom : false), 'images');
 
-		template.contentRight('.reading-body img').each(function() {
+		const sizes = await view.getRequiredSizes(currentIndex, _images);
 
-			var index = +this.dataset.index;
+		// Avoid continue if another comic has been opened
+		if(contentRightIndex != template.contentRightIndex())
+			return;
 
-			images[index] = new Image();
-			images[index].index = index;
-			images[index].onload = function() {
+		for(let i = 0; i < len; i++)
+		{
+			const image = _images[i];
+			const size = sizes[i] || {width: 1, height: 1};
 
-				imagesData[this.index] = {width: this.width, height: this.height, aspectRatio: (this.width / this.height)};
+			if(!image.folder)
+			{
+				const rotated = (size.width > size.height) ? _config.readingRotateHorizontals : _config.readingRotate;
 
-				imagesNumLoad++;
+				if(rotated == 1 || rotated == 2)
+					imagesData[image.index] = Object.assign(image, {width: size.height, height: size.width, aspectRatio: (size.height / size.width), rotated: rotated});
+				else
+					imagesData[image.index] = Object.assign(image, {width: size.width, height: size.height, aspectRatio: (size.width / size.height), rotated: rotated});
 
-				if(imagesNumLoad == imagesNum)
-				{
-					template.contentRight('.reading-body').css('display', 'block');
-					addHtmlImages();
-					disposeImages();
-					calculateView();
-
-					currentIndex = imagesData[currentIndex].position + 1;
-
-					var newIndex = currentIndex;
-
-					if(_config.readingManga && !readingViewIs('scroll'))
-						newIndex = (indexNum - newIndex) + 1;
-
-					goToIndex(newIndex, false, end, end);
-
-					if(readingViewIs('scroll'))
-						previousContentHeight = template.contentRight().children('div').children('div').height();
-				}
-
+				imagesPath[image.path] = image.index;
+				items.push(imagesData[image.index]);
 			}
-			images[index].onerror = function() {
-
-				imagesData[this.index] = {width: 0, height: 0, aspectRatio: 0};
-
-				imagesNumLoad++;
-
-				if(imagesNumLoad == imagesNum)
-				{
-					template.contentRight('.reading-body').css('display', 'block');
-					addHtmlImages();
-					disposeImages();
-					calculateView();
-
-					currentIndex = imagesData[currentIndex].position + 1;
-
-					var newIndex = currentIndex;
-
-					if(_config.readingManga && !readingViewIs('scroll'))
-						newIndex = (indexNum - newIndex) + 1;
-
-					goToIndex(newIndex, false, end, end);
-
-					if(readingViewIs('scroll'))
-						previousContentHeight = template.contentRight().children('div').children('div').height();
-				}
-
+			else
+			{
+				const _image = Object.assign(image, {width: 1, height: 1, aspectRatio: 1, rotated: false});
+				items.push(_image);
 			}
+		}
 
-			images[index].src = $(this).attr('src');
-			images[index].path = this.dataset.path;
-			imagesPath[this.dataset.path] = index;
+		sidebar.sizes(imagesData, currentComics);
 
-		});
+		render.setImagesData(imagesData);
+		filters.setImagesPath(imagesPath, readingCurrentPath);
+
+		if(config.readingAutodetectWebtoon)
+			loadReadingConfig(currentReadingConfigKey);
+
+		view.start();
+		view.distribution.htmlItems();
+		view.disposeImages();
+		view.calculateView(true);
+
+		currentIndex = imagesData[currentIndex] ? (imagesData[currentIndex].position + 1) : currentIndex;
+		let newIndex = currentIndex;
+
+		if(readingManga())
+			newIndex = (view.distribution.total - newIndex) + 1;
+
+		goToIndex(newIndex, false, end, end);
+
+		if(readingViewIs('scroll'))
+			view.stayInLine.getPreviusContentSize();
+
+		setTimeout(function(){onScroll.call(template._contentRight().firstElementChild)}, 500);
+
+		reading.isLoad();
 	}
 
 	template.contentRight().children('div').css({scrollbarGutter: readingViewIs('scroll') ? '' : 'initial'});
+
+	tracking.autoPrompt();
+	tracking.getImagesChapter();
 	
-	tracking.track();
+	if(!config.readingTrackingAtTheEnd)
+	{
+		trackingCurrent = true;
+		tracking.track();
+	}
+
+	startScrollWithMouse();
+	hideMouseInFullscreen();
+
+	filters.apply();
+	doublePage.apply();
+	progress.setInterval();
+
+	startWithPrevZoom();
 }
 
 module.exports = {
 	read: read,
-	images: function(){return images},
-	imagesNum: imagesNum,
+	reload: reload,
+	reloadAnimated: reloadAnimated,
+	reloadIndex: reloadIndex,
+	imagesNum: function(){return imagesNum},
+	indexNum: function(){return view.distribution.total},
 	contentNum: function(){return contentNum},
 	imagesNumLoad: imagesNumLoad,
+	get items(){return items},
 	imagesData: function(){return imagesData},
 	imagesDataClip: function(){return imagesDataClip},
+	imageClip: readingImageClip,
 	scalePrevData: function(){return scalePrevData},
+	goToPage: goToPage,
 	goToImage: goToImage,
+	goToImageCL: goToImageCL,
 	goToFolder: goToFolder,
-	goToIndex: function(v1, v2, v3, v4){readingDirection = true; goToIndex(v1, v2, v3, v4)},
+	goToEbookId: goToEbookId,
+	goToIndex: function(v1, v2, v3, v4){readingDirection = true; calculateRealReadingDirection(v1); goToIndex(v1, v2, v3, v4)},
+	goScrollPercent: goScrollPercent,
+	goToChapterProgress: goToChapterProgress,
+	openFolder: openFolder,
+	setNextOpenChapterProgress: setNextOpenChapterProgress,
 	goStart: goStart,
 	goPrevious: goPrevious,
 	goPrev: goPrevious,
+	goPrevComic: goPrevComic,
 	goNext: goNext,
 	goEnd: goEnd,
+	goNextComic: goNextComic,
+	showPreviousComic: showPreviousComic,
+	showNextComic: showNextComic,
+	pageRange: pageRange,
+	goBackPageRangeHistory: goBackPageRangeHistory,
+	goPageDialog: goPageDialog,
+	abortClick: abortClick,
 	leftClick: leftClick,
 	rightClick: rightClick,
 	zoomIn: zoomIn,
 	zoomOut: zoomOut,
+	zoomUp: zoomUp,
+	zoomDown: zoomDown,
+	zoomLeft: zoomLeft,
+	zoomRight: zoomRight,
 	resetZoom: resetZoom,
+	resetZoomOrOriginalSize: resetZoomOrOriginalSize,
+	resetZoomOrPrevZoom: resetZoomOrPrevZoom,
+	resetZoomOrButtonConfig: resetZoomOrButtonConfig,
+	dragZoom: dragZoom,
+	fixBlurOnZoom: fixBlurOnZoom,
+	applyScale: applyScale,
+	applyZoom: applyZoom,
 	activeMagnifyingGlass: activeMagnifyingGlass,
 	changeMagnifyingGlass: changeMagnifyingGlass,
 	changePagesView: changePagesView,
+	change: change,
 	magnifyingGlassControl: magnifyingGlassControl,
-	addHtmlImages: addHtmlImages,
-	disposeImages: disposeImages,
-	calculateView: calculateView,
-	stayInLine: stayInLine,
 	setCurrentComics: setCurrentComics,
 	currentComics: function(){return currentComics},
+	readingView: readingView,
 	readingViewIs: readingViewIs,
+	viewIs: readingViewIs,
+	readingDirection: function(){return readingDirection},
+	realReadingDirection: function(){return realReadingDirection},
 	disableOnScroll: disableOnScroll,
 	activeOnScroll: function(){return activeOnScroll},
-	saveReadingProgress: saveReadingProgress,
-	saveReadingProgressA: function(){return saveReadingProgressA},
+	setFromSkip: setFromSkip,
 	createAndDeleteBookmark: createAndDeleteBookmark,
+	currentPageIsBookmark: currentPageIsBookmark,
+	deleteBookmark: deleteBookmark,
+	showHiddenBars: showHiddenBars,
+	hideMouseInFullscreen: hideMouseInFullscreen,
 	currentIndex: function(){return currentIndex},
+	currentImagePosition: currentImagePosition,
+	currentImagePage: currentImagePage,
+	currentImageIndex: currentImageIndex,
 	currentPageVisibility: function(){return currentPageVisibility},
+	currentToc: currentToc,
+	totalPages: function(){return imagesNum},
+	currentPage: function(){return currentPage},
+	currentPageIndex: function(){return currentPage - 1},
+	getImage: getImage,
+	getImageByPosition: getImageByPosition,
+	getImageByName: getImageByName,
 	loadBookmarks: loadBookmarks,
 	loadTrackigSites: loadTrackigSites,
 	loadReadingPages: loadReadingPages,
@@ -3546,22 +5891,65 @@ module.exports = {
 	newReadingShortcutPagesConfig: newReadingShortcutPagesConfig,
 	removeReadingShortcutPagesConfig: removeReadingShortcutPagesConfig,
 	currentReadingConfigKey: function(){return currentReadingConfigKey},
+	loadReadingConfig: loadReadingConfig,
+	purgeGlobalReadingPagesConfig: purgeGlobalReadingPagesConfig,
+	updateConfigLabels: updateConfigLabels,
 	onReading: function(){return onReading},
-	calculateImagesDistribution: calculateImagesDistribution,
-	imagesDistribution: function(){return imagesDistribution},
-	applyMangaReading: applyMangaReading,
+	imagesDistribution: function(){return view.distribution.distribution},
 	haveZoom: function(){return haveZoom},
-	imagesPosition: function(){return imagesPosition},
-	imagesFullPosition: function(){return imagesFullPosition},
+	getTabState: getTabState,
+	setTabState: setTabState,
+	setTabStateFirst: setTabStateFirst,
+	imagesPosition: function(){return view.imagesPosition},
+	imagesFullPosition: function(){return view.imagesFullPosition},
 	readingCurrentPath: function () {return readingCurrentPath},
 	setReadingDragScroll: setReadingDragScroll,
+	get readingDragScroll(){return readingDragScroll},
+	scrollNextOrPrevComic: scrollNextOrPrevComic,
+	getHideContent: getHideContent,
 	hideContent: hideContent,
 	hideContentLeft: hideContentLeft,
 	hideBarHeader: hideBarHeader,
+	hideTabsBar: hideTabsBar,
+	showPageNumber: showPageNumber,
 	setShownContentLeft: function(value){shownContentLeft = value},
 	setShownBarHeader: function(value){shownBarHeader = value},
 	loadReadingMoreOptions: loadReadingMoreOptions,
-	currentScale: function(){return currentScale},
-	rightSize: function(){return rightSize},
+	get currentScale(){return currentScale},
+	set currentScale(value){currentScale = value},
+	rightSize: function(){return view.rightSize},
 	zoomingIn: function(){return zoomingIn},
+	updateReadingPagesConfig: updateReadingPagesConfig,
+	readingFile: function(){return readingFile},
+	fastUpdateEbookPages: fastUpdateEbookPages,
+	generateEbookPagesDelayed: generateEbookPagesDelayed,
+	set ebookHasSelection(value){ebookHasSelection = value},
+	get ebookHasSelection(){return ebookHasSelection},
+	getConfig: getConfig,
+	isEbook: function(){return readingIsEbook},
+	isPdf: function(){return readingIsPdf},
+	rotateImage: rotateImage,
+	setIsLoaded: function(value){isLoaded=value},
+	isLoaded: function(value){return isLoaded},
+	manga: readingManga,
+	margin: readingMargin,
+	globalZoom: readingGlobalZoom,
+	globalZoomSlide: readingGlobalZoomSlide,
+	horizontalsMargin: readingHorizontalsMargin,
+	isLoad: isLoad,
+	onLoad: onLoad,
+	ebook: readingEbook,
+	get _ebook() {return _ebook},
+	filters: filters,
+	music: music,
+	contextMenu: contextMenu,
+	pageTransitions: pageTransitions,
+	panels: panels,
+	render: render,
+	sidebar: sidebar,
+	discord: discord,
+	progress: progress,
+	doublePage: doublePage,
+	view: view,
+	ai: ai,
 };

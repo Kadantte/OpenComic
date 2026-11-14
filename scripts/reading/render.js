@@ -1,27 +1,84 @@
+const ai = require(p.join(appDir, '.dist/reading/render/ai.js'));
+
 var file = false,
+	ebook = false,
+	ebookConfigChanged = false,
+	renderType = 'pdf',
+	renderImages = false,	
+	renderPdf = false,
+	renderEbook = false,	
 	imagesData = {},
+	rendering = {},
 	rendered = {},
 	renderedMagnifyingGlass = {},
-	maxNext = 10,
-	maxPrev = 5,
+	renderedObjectsURL = [],
+	renderedObjectsURLCache = {},
 	currentIndex = 0,
 	scale = 1,
 	scaleMagnifyingGlass = false,
 	globalZoom = false,
 	doublePage = false;
 
-async function setFile(_file, _scaleMagnifyingGlass = false)
+async function setFile(_file, _scaleMagnifyingGlass = false, _renderType = 'pdf')
 {
+	if(file) file.destroy();
+
+	reading.panels.reset();
+
+	renderType = _renderType;
+
+	renderImages = (renderType == 'images') ? true : false;
+	renderPdf = (renderType == 'pdf') ? true : false;
+	renderEbook = (renderType == 'ebook') ? true : false;
+
 	file = _file;
-	if(file) await file.read(); // Try make this from cache
+	if(file && !renderEbook) await file.read(); // Try make this from cache
+
+	ebook = renderEbook ? await file.ebook() : false;
+	ebookConfigChanged = false;
 
 	rendered = {};
 	renderedMagnifyingGlass = {};
 	scale = 1;
 	scaleMagnifyingGlass = _scaleMagnifyingGlass;
 	globalZoom = false;
+	ai.clean(true);
+
+	if(renderImages)
+		revokeAllObjectURL();
+
+	createObserver();
 
 	return;
+}
+
+function clean(force = false)
+{
+	threads.clean('readingRender');
+	ai.clean(force);
+}
+
+async function reset(_scaleMagnifyingGlass = false)
+{
+	ebook = renderEbook ? await file.ebook() : false;
+
+	rendered = {};
+	renderedMagnifyingGlass = {};
+	scale = 1;
+	scaleMagnifyingGlass = _scaleMagnifyingGlass;
+	globalZoom = false;
+	ai.clean(true);
+
+	if(renderImages)
+		revokeAllObjectURL();
+
+	return;
+}
+
+async function resetRendered()
+{
+	rendered = {};
+	renderedMagnifyingGlass = {};
 }
 
 function setImagesData(_imagesData)
@@ -29,125 +86,249 @@ function setImagesData(_imagesData)
 	imagesData = _imagesData;
 }
 
-function setMagnifyingGlassStatus(active = false)
+function setMagnifyingGlassStatus(active = false, doublePage = false)
 {
+	scaleMagnifyingGlass = active;
+
 	if(active)
-	{
-		scaleMagnifyingGlass = active;
-	}
-	else
-	{
-		scaleMagnifyingGlass = false;
-	}
+		setRender(doublePage ? 3 : 2, doublePage ? 4 : 2, false, true);
 }
 
-var sendToQueueST = false;
+var setRenderST = false;
+
+function getVisbleImages(doublePage = false)
+{
+	const isScroll = reading.readingViewIs('scroll');
+
+	let images = doublePage ? 2 : 0;
+	if(isScroll) images += 2;
+
+	let prev = images;
+	let next = images;
+
+	if(next == 0)
+		next = 1;
+
+	return {prev: prev, next: next}; 
+}
+
+function imagesToPreload(doublePage = false)
+{
+	let prev = Math.round(config.readingImagesToPreload / 2);
+	let next = config.readingImagesToPreload;
+
+	if(doublePage && next < 4)
+		next *= 2;
+
+	if(doublePage && prev < 3)
+		prev = 3;
+
+	if(prev > 4) // Limit prev to 4 to avoid preloading too many prev images that the user may never see
+		prev = 4;
+
+	return {prev: prev, next: next};
+}
 
 function setScale(_scale = 1, _globalZoom = false, _doublePage = false)
 {
-	if(!file) return;
+	if(!file && !renderImages) return;
+	if(renderEbook) return;
 
-	clearTimeout(sendToQueueST);
+	clearTimeout(setRenderST);
 
-	queue.clean('readingRender');
+	clean();
 
 	scale = _scale;
 	globalZoom = _globalZoom;
 	doublePage = _doublePage;
+
+	const visbleImages = getVisbleImages(doublePage);
+	const {prev, next} = imagesToPreload(doublePage);
 
 	if(globalZoom)
 	{
 		rendered = {};
 		renderedMagnifyingGlass = {};
 
-		setRenderQueue(0, doublePage ? 2 : 1);
+		setRender(visbleImages.prev, visbleImages.next);
 
-		sendToQueueST = setTimeout(function(){
+		setRenderST = setTimeout(function(){
 
-			if(scaleMagnifyingGlass) setRenderQueue(doublePage ? 3 : 2, doublePage ? 4 : 2, _scale * scaleMagnifyingGlass, true);
-			setRenderQueue(maxPrev, maxNext);
+			if(scaleMagnifyingGlass) setRender(doublePage ? 3 : 2, doublePage ? 4 : 2, _scale * scaleMagnifyingGlass, true);
+			setRender(prev, next);
 
-		}, 2000);
+		}, 1000);
 	}
 	else
 	{
-		setRenderQueue(0, doublePage ? 2 : 1, _scale);
+		setRender(visbleImages.prev, visbleImages.next, _scale);
 
-		sendToQueueST = setTimeout(function(){
+		setRenderST = setTimeout(function(){
 
-			if(scaleMagnifyingGlass) setRenderQueue(doublePage ? 3 : 2, doublePage ? 4 : 2, _scale * scaleMagnifyingGlass, true);
+			if(scaleMagnifyingGlass) setRender(doublePage ? 3 : 2, doublePage ? 4 : 2, _scale * scaleMagnifyingGlass, true);
 
 		}, 500);
 	}
 }
 
-function setScaleMagnifyingGlass(_scale = 1)
+function setScaleMagnifyingGlass(_scale = 1, doublePage = false)
 {
 	if(!file || !scaleMagnifyingGlass) return;
+	if(renderEbook) return;
 
-	clearTimeout(sendToQueueST);
+	clearTimeout(setRenderST);
 
-	queue.clean('readingRender');
+	clean();
 
 	renderedMagnifyingGlass = {};
 	scaleMagnifyingGlass = _scale;
 
-	sendToQueueST = setTimeout(function(){
+	setRenderST = setTimeout(function(){
 
-		if(scaleMagnifyingGlass) setRenderQueue(doublePage ? 3 : 2, doublePage ? 4 : 2, scale * scaleMagnifyingGlass, true);
+		if(scaleMagnifyingGlass) setRender(doublePage ? 3 : 2, doublePage ? 4 : 2, scale * scaleMagnifyingGlass, true);
 
 	}, 500);
 }
 
 function resized(doublePage = false)
 {
-	if(!file) return;
+	if(!file && !renderImages) return;
+	if(renderEbook) return; // Reset function is used
 
-	clearTimeout(sendToQueueST);
+	let readingBody = template._contentRight().querySelector('.reading-body');
+	if(readingBody) readingBody.classList.add('resizing');
 
-	queue.clean('readingRender');
+	clearTimeout(setRenderST);
+
+	clean();
+
+	if(renderImages)
+		revokeAllObjectURL();
 
 	rendered = {};
 	renderedMagnifyingGlass = {};
 
-	sendToQueueST = setTimeout(function(){
+	if(readingBody) readingBody.classList.remove('resizing');
 
-		setRenderQueue(0, doublePage ? 2 : 1);
+	const visbleImages = getVisbleImages(doublePage);
+	const {prev, next} = imagesToPreload(doublePage);
 
-		sendToQueueST = setTimeout(function(){
+	setRender(visbleImages.prev, visbleImages.next);
 
-			if(scaleMagnifyingGlass) setRenderQueue(doublePage ? 3 : 2, doublePage ? 4 : 2, false, true);
-			setRenderQueue(maxPrev, maxNext);
+	setRenderST = setTimeout(function(){
 
-		}, 800);
+		if(scaleMagnifyingGlass) setRender(doublePage ? 3 : 2, doublePage ? 4 : 2, false, true);
+		setRender(prev, next);
 
-	}, 200);
+	}, 400);
 }
 
-async function focusIndex(index)
+async function setEbookConfigChanged(ebookConfig)
 {
-	if(!file) return;
+	ebookConfigChanged = true;
 
-	clearTimeout(sendToQueueST);
+	if(renderEbook && ebook)
+		ebook.updateConfig(ebookConfig);
+}
 
-	queue.clean('readingRender');
+async function focusIndex(index = null, doublePage = false)
+{
+	if(!file && !renderImages) return;
 
-	currentIndex = index;
+	clearTimeout(setRenderST);
 
-	setRenderQueue(maxPrev, maxNext);
+	clean();
 
-	sendToQueueST = setTimeout(function(){
+	if(index !== null)
+		currentIndex = index;
 
-		if(scaleMagnifyingGlass) setRenderQueue(doublePage ? 3 : 2, doublePage ? 4 : 2, false, true);
+	const {prev, next} = imagesToPreload(doublePage);
+	setRender(prev, next, false, false, (doublePage ? 2 : false));
+
+	setRenderST = setTimeout(function(){
+
+		if(scaleMagnifyingGlass) setRender(doublePage ? 3 : 2, doublePage ? 4 : 2, false, true);
 
 	}, 100);
 }
 
-async function setRenderQueue(prev = 1, next = 1, scale = false, magnifyingGlass = false)
+function revokeAllObjectURL()
 {
-	console.time('readingRender');
+	// const total = renderedObjectsURL.reduce((acc, o) => acc + o.data.size, 0);
+	// console.log(`Total blob payload megabytes: ${(total / (1024 * 1024)).toFixed(2)} MB in ${renderedObjectsURL.length} images`);
+
+	for(let i = 0, len = renderedObjectsURL.length; i < len; i++)
+	{
+		renderedObjectsURL[i].img.classList.remove('blobRendered');
+		URL.revokeObjectURL(renderedObjectsURL[i].data.blob);
+	}
+
+	renderedObjectsURL = [];
+	renderedObjectsURLCache = {};
+}
+
+function revokeObjectURL(key)
+{
+	const index = renderedObjectsURL.findIndex(o => o.key === key);
+
+	if(index !== -1)
+	{
+		// renderedObjectsURL[index].img.classList.remove('blobRendered');
+		URL.revokeObjectURL(renderedObjectsURL[index].data.blob);
+
+		renderedObjectsURL.splice(index, 1);
+		delete renderedObjectsURLCache[key];
+	}
+}
+
+function reRenderImage(index, runAi = false)
+{
+	const image = imagesData[index] || false;
+	if(!image) return;
+
+	const contentRight = template._contentRight();
+
+	const img = contentRight.querySelector('.reading-body > div > div.r-flex .r-img-i'+index+' oc-img img');
+	if(!img) return;
+
+	const src = img.dataset.src;
+
+	const toRevoke = renderedObjectsURL.filter(o => o.src === src).map(o => o.key);
+	toRevoke.forEach(revokeObjectURL);
+
+	renderedMagnifyingGlass[index] = false;
+	rendered[index] = false;
+
+	setRender(doublePage ? 3 : 2, doublePage ? 4 : 2, false, false, false, runAi);
+
+	if(scaleMagnifyingGlass)
+		setRender(doublePage ? 3 : 2, doublePage ? 4 : 2, false, true, false, runAi);
+}
+
+async function setRender(prev = 1, next = 1, scale = false, magnifyingGlass = false, prioritizeNext = false, runAi = true)
+{
+	//console.time('readingRender');
+
+	const blocking = function(index, next = false) {
+
+		if(index === 0 || (doublePage && index === 1 && next))
+			return true;
+
+		if(!onRender)
+			return false;
+
+		if(onRender.blocking >= onRender.num)
+			return false;
+
+		onRender.blocking++;
+		return true;
+
+	}
 
 	let _rendered = magnifyingGlass ? renderedMagnifyingGlass : rendered;
+
+	if(prioritizeNext)
+		prev = prev + prioritizeNext;
 
 	for(let i = 0, len = Math.max(next, prev); i < len; i++)
 	{
@@ -157,98 +338,485 @@ async function setRenderQueue(prev = 1, next = 1, scale = false, magnifyingGlass
 		// Next pages
 		if(i < next && (!_rendered[nextI] || (scale !== false && _rendered[nextI] !== scale)) && imagesData[nextI])
 		{
-			queue.add('readingRender', async function() {
+			if(renderEbook) // Render ebook instantly
+			{
+				await render(nextI, scale, magnifyingGlass, 0, runAi);
+			}
+			else
+			{
+				threads.job('readingRender', {useThreads: threads.ALL, blocking: blocking(i, true)}, async function(id) {
 
-				return render(nextI, scale, magnifyingGlass);
+					return render(nextI, scale, magnifyingGlass, id, runAi);
 
-			});
+				}, threads.id('readingRender'));
+			}
 		}
 
 		// Prev pages
-		if(i < prev && nextI != prevI && (!_rendered[prevI] || (scale !== false && _rendered[prevI] !== scale)) && imagesData[prevI])
+		if(!prioritizeNext || i > prioritizeNext)
 		{
-			queue.add('readingRender', async function() {
+			if(prioritizeNext) prevI += prioritizeNext;
 
-				return render(prevI, scale, magnifyingGlass);
+			if(i < prev && nextI != prevI && (!_rendered[prevI] || (scale !== false && _rendered[prevI] !== scale)) && imagesData[prevI])
+			{
+				if(renderEbook) // Render ebook instantly
+				{
+					render(prevI, scale, magnifyingGlass, 0, runAi);
+				}
+				else
+				{
+					threads.job('readingRender', {useThreads: threads.ALL, blocking: blocking(i)}, async function(id) {
 
-			});
+						return render(prevI, scale, magnifyingGlass, id, runAi);
+
+					}, threads.id('readingRender'));
+				}
+			}
 		}
 	}
 
-	queue.end('readingRender', function() {
+	threads.end('readingRender', function() {
 
-		console.timeEnd('readingRender');
+		//console.timeEnd('readingRender');
 
 	});
 }
 
-async function render(index, _scale = false, magnifyingGlass = false)
+var onRender = false;
+
+async function setOnRender(num = 1, callback = false)
+{
+	clean();
+
+	onRender = {
+		num: num,
+		callback: callback,
+		blocking: 0,
+	};
+}
+
+async function render(index, _scale = false, magnifyingGlass = false, threadsId = 0, runAi = true)
 {
 	let imageData = imagesData[index] || false;
 
 	if(imageData)
 	{
-		_scale = (_scale || scale);
+		let contentRight = template._contentRight();
 
-		if(magnifyingGlass)
-			_scale = scale * scaleMagnifyingGlass;
+		let rImg = contentRight.querySelector(magnifyingGlass ? '.reading-lens > div > div > div.r-flex .r-img-i'+index : '.reading-body > div > div.r-flex .r-img-i'+index);
+		if(!rImg) return;
 
-		if(magnifyingGlass)
-			renderedMagnifyingGlass[index] = _scale;
-		else
-			rendered[index] = _scale;
+		const rotated90 = (imageData?.rotated == 1 || imageData?.rotated == 2) ? true : false;
 
-		_scale = _scale * window.devicePixelRatio * (_scale != 1 ? 1.5 : 1); // 1.5 more scale is applied to avoid blurry text due to transform if scale is not 1
-
-		let ocImg = template.contentRight(magnifyingGlass ? '.reading-lens .r-img-i'+index+' oc-img' : '.r-img-i'+index+' oc-img').get(0);
-		let originalCanvas = ocImg.querySelector('canvas');
-
-		if(!originalCanvas) return;
-
-		let canvas = originalCanvas.cloneNode(true);
-
-		let originalWidth = +ocImg.dataset.width
-
-		let _config = {
-			width: Math.round(originalWidth * _scale),
-		};
-
-		if(_config.width > config.renderMaxWidth)
+		if(renderEbook)
 		{
-			_config.width = config.renderMaxWidth;
-			_scale = (_config.width / originalWidth);
+			rendered[index] = 1;
+			renderedMagnifyingGlass[index] = 1;
+
+			const page = ebook.page(index - 1);
+
+			let iframe = ebook.pageToIframe(page.html, page.chapter);
+			let iframeMG = iframe.cloneNode(true);
+
+			let ocImg = contentRight.querySelector('.r-img-i'+index+' oc-img');
+			let ocImgMG = contentRight.querySelector('.reading-lens .r-img-i'+index+' oc-img');
+
+			if(ocImg)
+			{
+				let prevIframe = ocImg.querySelector('iframe');
+				if(prevIframe) prevIframe.remove();
+
+				ocImg.appendChild(iframe);
+			}
+
+			if(ocImgMG)
+			{
+				let prevIframeMG = ocImgMG.querySelector('iframe');
+				if(prevIframeMG) prevIframeMG.remove();
+
+				ocImgMG.appendChild(iframeMG);
+			}
+
+			if(ebookConfigChanged)
+			{
+				ebook.applyConfigToHtml(iframe.contentDocument, page.chapter);
+				ebook.applyConfigToHtml(iframeMG.contentDocument, page.chapter);
+			}
+		}
+		else if(renderImages || renderPdf)
+		{
+			let cssMethods = {
+				'pixelated': 'pixelated',
+				'webkit-optimize-contrast': '-webkit-optimize-contrast',
+			};
+
+			let affineInterpolationMethods = {
+				'bicubic': 'bicubic',
+				'bilinear': 'bilinear',
+				'nohalo': 'nohalo',
+				'locally-bounded-bicubic': 'lbb',
+				'vertex-split-quadratic-basis-spline': 'vsqbs',
+			};
+
+			_scale = (_scale || scale);
+
+			let ocImg = rImg.querySelector('oc-img');
+			if(!ocImg) return;
+
+			let img = ocImg.querySelector('img');
+			if(!img) return;
+
+			let estimated = +ocImg.dataset.estimated;
+			let originalWidth = +ocImg.dataset.width;
+			let originalHeight = +ocImg.dataset.height;
+
+			if(isNaN(originalWidth) || isNaN(originalHeight) || estimated) return;
+
+			if(magnifyingGlass)
+				_scale = scale * scaleMagnifyingGlass;
+
+			_scale = _scale * window.devicePixelRatio;
+
+			let _config = {
+				width: rotated90 ? Math.round(originalHeight * _scale) : Math.round(originalWidth * _scale),
+				height: rotated90 ? Math.round(originalWidth * _scale) : Math.round(originalHeight * _scale),
+				compressionLevel: 0,
+				// kernel: 'lanczos3',
+			};
+
+			let src = img.dataset.src;
+			const path = img.dataset.path;
+			const key = src+'|'+_config.width+'x'+_config.height;
+
+			fileManager.macosStartAccessingSecurityScopedResource(src);
+
+			if(renderImages)
+			{
+				const file = fileManager.file(false, {log: false, progress: false});
+				await file.makeAvailable([{path}]);
+				file.destroy();
+			}
+
+			if(compatible.image.convert(path)) // Convert unsupported images
+				src = await workers.convertImage(path, {priorize: true});
+
+			reading.panels.getPanels(src, index);
+
+			const aiPath = ai.image(src, imageData, {
+				run: runAi,
+				start: function() {
+
+					if(!magnifyingGlass && !ocImg.querySelector('.ai-loading'))
+					{
+						const html = template.load('ai.loading.html');
+						ocImg.insertAdjacentHTML('beforeend', html);
+
+						//const loading = ocImg.querySelector('.ai-loading .loading');
+						//if(loading) events.loadingProgress(loading, 0);
+					}
+
+				},
+				progress: function(progress) {
+
+					/*const icon = ocImg.querySelector('.ai-loading .material-icon');
+					if(icon) icon.style.animationDuration = '1s';
+
+					const loading = ocImg.querySelector('.ai-loading .loading');
+					if(loading)
+					{
+						loading.style.opacity = 1;
+						events.loadingProgress(loading, progress);
+					}*/
+
+				},
+				end: function(aiPath) {
+
+					const aiLoading = ocImg.querySelector('.ai-loading');
+					if(aiLoading) aiLoading.remove();
+
+					reRenderImage(index, false);
+
+				}
+			});
+
+			if(aiPath)
+				src = aiPath;
+
+			const imageSize = aiPath ? reading.ai.size(imageData) : imageData;
+			_config.kernel = _config.width > imageSize.width ? config.readingImageInterpolationMethodUpscaling : config.readingImageInterpolationMethodDownscaling;
+
+			const imageWidth = rotated90 ? imageSize.height : imageSize.width;
+			const imageHeight = rotated90 ? imageSize.width : imageSize.height;
+
+			// Remove prev rendered blobRendered and blobRender classes to avoid pixelated intermediate images
+			img.classList.remove('blobRendered', 'blobRender');
+
+			if(renderPdf)
+			{
+				if(_config.width > config.renderMaxWidth)
+					_config.width = config.renderMaxWidth;
+
+				if(renderedObjectsURLCache[key])
+				{
+					const data = renderedObjectsURLCache[key];
+
+					setSrc(img, data.blob);
+					img.classList.add('blobRendered', 'blobRender', 'sizeFromImg');
+					img.style.imageRendering = '';
+
+					img.dataset.width = Math.round(data.width);
+					img.dataset.height = Math.round(data.height);
+				}
+				else
+				{
+					try
+					{
+						let name = imageData.name;
+						name = (name && !/\.jpg$/.test(name)) ? name+'.jpg' : name;
+
+						let data = false;
+
+						if(name)
+						{
+							data = await file.renderBlob(name, _config);
+
+							renderedObjectsURL.push({data: data, img: img, key, src});
+							renderedObjectsURLCache[key] = data;
+
+							if(threadsId !== threads.id('readingRender')) return; // Return if the threads is different
+
+							setSrc(img, data.blob);
+							img.classList.add('blobRendered', 'blobRender', 'sizeFromImg');
+							img.style.imageRendering = '';
+
+							img.dataset.width = Math.round(data.width);
+							img.dataset.height = Math.round(data.height);
+						}
+						else
+						{
+							const success = await srcToImage(src, img, key, threadsId);
+							if(!success) return;
+						}
+					}
+					catch(error)
+					{
+						console.error(error);
+
+						const success = await srcToImage(src, img, key, threadsId);
+						if(!success) return;
+					}
+				}
+			}
+			else if(_config.width !== imageWidth && _config.kernel && _config.kernel != 'chromium' && !magnifyingGlass)
+			{
+				if(cssMethods[_config.kernel])
+				{
+					setSrc(img, app.encodeSrcURI(app.shortWindowsPath(src, true)));
+					img.classList.remove('blobRendered', 'blobRender');
+					img.style.imageRendering = cssMethods[_config.kernel];
+				}
+				else if(renderedObjectsURLCache[key])
+				{
+					setSrc(img, renderedObjectsURLCache[key].blob);
+					img.classList.add('blobRendered', 'blobRender');
+					img.style.imageRendering = '';
+				}
+				else if(!(await image.isAnimated(src)))
+				{
+					if(affineInterpolationMethods[_config.kernel])
+					{
+						_config.imageWidth = imageWidth;
+						_config.imageHeight = imageHeight;
+						_config.interpolator = affineInterpolationMethods[_config.kernel];
+
+						_config.kernel = false;
+					}
+
+					try
+					{
+						let data = await image.resizeToBlob(src, _config);
+
+						renderedObjectsURL.push({data: data, img: img, key, src});
+						renderedObjectsURLCache[key] = {blob: data.blob};
+
+						if(threadsId !== threads.id('readingRender')) return; // Return if the threads is different
+
+						setSrc(img, data.blob);
+						img.classList.add('blobRendered', 'blobRender');
+						img.style.imageRendering = '';
+					}
+					catch(error)
+					{
+						console.error(error);
+
+						const success = await srcToImage(src, img, key, threadsId);
+						if(!success) return;
+					}
+				}
+				else
+				{
+					const success = await srcToImage(src, img, key, threadsId);
+					if(!success) return;
+				}
+			}
+			else
+			{
+				const success = await srcToImage(src, img, key, threadsId);
+				if(!success) return;
+			}
+
+			if((onRender && onRender.num > 0) || _scale)
+				await decodeImage(img, true);
+			else
+				decodeImage(img, false);
+
+			if(magnifyingGlass)
+				renderedMagnifyingGlass[index] = _scale;
+			else
+				rendered[index] = _scale;
 		}
 
-		let name = imageData.name;
-		name = (name && !/\.jpg$/.test(name)) ? name+'.jpg' : name;
-
-		canvas.style.transform = 'scale('+(1 / _scale)+')';
-		canvas.style.transformOrigin = 'top left';
-
-		let isRendered = false;
-
-		if(canvas && name)
-			isRendered = await file.renderCanvas(name, canvas, _config);
-
-		if(isRendered)
+		if(onRender)
 		{
-			ocImg.innerHTML = '';
-			canvas.style.width = '';
-			canvas.style.height = '';
-			ocImg.appendChild(canvas);
+			onRender.num--;
+
+			if(onRender.num <= 0)
+			{
+				let img = rImg.querySelector('oc-img img');
+
+				if(img && !img.complete)
+				{
+					await new Promise(function(resolve){
+
+						img.onload = resolve;
+						img.onerror = resolve;
+
+					});
+				}
+
+				if(onRender?.callback) onRender.callback();
+				onRender = false;
+			}
 		}
 	}
 
 	return;
 }
 
+async function srcToImage(src, img, key, threadsId)
+{
+	const resizeToBlob = async function() {
+
+		if(!renderedObjectsURLCache[key])
+		{
+			const data = await image.resizeToBlob(src, {});
+
+			renderedObjectsURL.push({data: data, img: img, key, src});
+			renderedObjectsURLCache[key] = {blob: data.blob};
+		}
+
+		if(threadsId !== threads.id('readingRender')) return; // Return if the threads is different
+
+		setSrc(img, renderedObjectsURLCache[key].blob);
+		img.classList.remove('blobRendered', 'blobRender');
+		img.style.imageRendering = '';
+
+		return true;
+
+	}
+
+	if(compatible.image.sharp(src) || (compatible.image.avif(src) && !(await image.isAnimated(src)))) // This image formats requires sharp (custom build) to be displayed, avif only for yuv422 support
+	{
+		try
+		{
+			return await resizeToBlob();
+		}
+		catch(error)
+		{
+			console.error(error);
+			return;
+		}
+	}
+
+	if(threadsId !== threads.id('readingRender')) return; // Return if the threads is different
+
+	setSrc(img, app.encodeSrcURI(app.shortWindowsPath(src, true)));
+	img.classList.remove('blobRendered', 'blobRender');
+	img.style.imageRendering = '';
+
+	return true;
+}
+
+async function decodeImage(img, sync = false)
+{
+	if(sync)
+	{
+		try
+		{
+			await img.decode();
+		}
+		catch(e){}	
+	}
+
+	observer.observe(img);
+}
+
+function setSrc(img, src)
+{
+	const currentSrc = img.dataset.currentSrc || '';
+
+	if(currentSrc !== src)
+	{
+		img.src = src;
+		img.dataset.currentSrc = src;
+	}
+}
+
+var observer = false;
+
+function createObserver()
+{
+	if(observer)
+		observer.disconnect();
+
+	observer = new IntersectionObserver(function(entries) {
+
+		for(let i = 0, len = entries.length; i < len; i++)
+		{
+			const entry = entries[i];
+
+			if(entry.isIntersecting || entry.intersectionRatio > 0)
+			{				
+				try
+				{
+					entry.target.decode();
+				}
+				catch(e){}	
+			}
+		}
+
+	}, {
+		root: template._contentRight().firstElementChild,
+		rootMargin: '4000px',
+		threshold: 0,
+	});
+}
+
 module.exports = {
 	setFile: setFile,
+	clean: clean,
+	reset: reset,
+	resetRendered: resetRendered,
 	setImagesData: setImagesData,
 	setMagnifyingGlassStatus: setMagnifyingGlassStatus,
 	setScale: setScale,
 	setScaleMagnifyingGlass: setScaleMagnifyingGlass,
-	//render: render,
+	render: render,
 	focusIndex: focusIndex,
 	resized: resized,
+	setEbookConfigChanged: setEbookConfigChanged,
+	setOnRender: setOnRender,
+	revokeAllObjectURL: revokeAllObjectURL,
+	get rendered() {return rendered},
+	ai,
 }

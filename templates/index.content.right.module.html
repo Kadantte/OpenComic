@@ -1,41 +1,10 @@
-{{#if comicsReadingProgress}}
-<div class="continue-reading gamepad-item body-medium" onclick="dom.openComic(true, '{{chain 'escapeBackSlash' 'escapeQuotesSimples' comicsReadingProgress.path}}', '{{chain 'escapeBackSlash' 'escapeQuotesSimples' comicsReadingProgress.mainPath}}');">
-	<div>
-		<div class="continue-reading-sha-{{comicsReadingProgress.sha}}" style="background-image: url({{chain 'escapeBackSlash' 'escapeQuotesSimples' comicsReadingProgress.thumbnail}});"></div>
-		<span>{{language.comics.continueReading}}:&nbsp&nbsp&nbsp{{{comicsReadingProgress.pathText}}}</span>
-	</div>
-</div>
-{{/if}}
-<div class="content-view-module">
+{{> index.content.right.boxes.html}}
+{{> index.content.right.continue.reading.html}}
+
+<div class="content-view-module content-view-module-{{page.viewModuleSize}}">
 	{{#each comics}}
-	<div class="sha-{{sha}} gamepad-item{{#if @first}} gamepad-to-highlight{{/if}}" onclick="{{#if folder}}dom.loadIndexPage(true, '{{chain 'escapeBackSlash' 'escapeQuotesSimples' path}}', false, false, '{{chain 'escapeBackSlash' 'escapeQuotesSimples' mainPath}}'){{else}}dom.openComic(true, '{{chain 'escapeBackSlash' 'escapeQuotesSimples' path}}', '{{chain 'escapeBackSlash' 'escapeQuotesSimples' mainPath}}');{{/if}}" oncontextmenu="dom.comicContextMenu('{{chain 'escapeBackSlash' 'escapeQuotesSimples' path}}', {{#if @root.comicsIndex}}true{{else}}false{{/if}}, fromGamepad)">
-		{{#if folder}}
-		<div class="v-folder item-image">
-			{{#if poster}}
-				<div class="pi-sha-{{poster.sha}} folder-poster" style="background-image: url({{poster.path}})"></div>
-				{{#if images}}
-					{{#each images}}
-					<div class="fi-sha-{{sha}} folder-images">
-						<img src="{{chain 'escapeBackSlash' 'escapeQuotesSimples' path}}">
-					</div>
-					{{/each}}
-				{{/if}}
-			{{else}}
-				{{#each images}}
-				<div class="fi-sha-{{sha}} folder-images">
-					<img src="{{chain 'escapeBackSlash' 'escapeQuotesSimples' path}}">
-				</div>
-				{{/each}}
-			{{/if}}
-		</div>
-		{{else}}
-		<div class="v-img">
-			<picture><img class="item-image" src="{{chain 'escapeBackSlash' 'escapeQuotesSimples' thumbnail}}"></picture>
-		</div>
-		{{/if}}
-		<div class="v-text body-small">{{name}}</div>
-	</div>
+		{{> index.content.right.module.item.html}}
 	{{else}}
-	<div class="content-empty">{{#if comicsIndex}}{{language.comics.emptyIndex}}{{else}}{{language.comics.emptyFolder}}{{/if}}</div>
+		{{> index.content.right.else.html}}
 	{{/each}}
 </div>

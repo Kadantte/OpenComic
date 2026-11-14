@@ -1,215 +1,219 @@
-var queuedImages = [], processingTheImageQueue = false, imageLibrary = false, imageUse = 'im', sharp = false, jimp = false;
+const folderThumbnails = require(p.join(appDir, '.dist/cache/folder-thumbnails.js'));
 
-var cacheFolder = p.join(electronRemote.app.getPath('cache'), 'opencomic');
+let zstd = false;
+let zstdEncoder = false;
+let zstdDecoder = false;
 
-if(!fs.existsSync(cacheFolder)) fs.mkdirSync(cacheFolder);
-cacheFolder = p.join(cacheFolder, 'cache');
-if(!fs.existsSync(cacheFolder)) fs.mkdirSync(cacheFolder);
-
-function processTheImageQueue()
+try
 {
-	if(sharp === false) sharp = require('sharp');
+	zstd = require('@toondepauw/node-zstd');
+	zstdEncoder = new zstd.Encoder(5);
+	zstdDecoder = new zstd.Decoder();
+}
+catch (error)
+{
+	if(!(process.platform === 'win32' && process.arch === 'arm64')) // node-zstd not work on Windows arm64
+	{
+		console.error('Warning: ZSTD cache compression not working');
+		console.error(error);
+	}
 
-	let img = queuedImages[0];
-	let sha = img.sha;
+	zstd = zstdEncoder = zstdDecoder = false;
+}
 
-	let realPath = fileManager.realPath(img.file);
+var cacheFolder = settings.getCacheFolder();
 
-	sharp(realPath).jpeg({quality: 95}).resize({width: img.size, background: 'white'}).toFile(p.join(cacheFolder, sha+'.jpg'), function(error) {
-	
-		if(error)
-		{
+async function processTheImageQueue(img = false)
+{
+	const sha = img.sha;
 
-			if(!imageLibrary) imageLibrary = require('gm').subClass({imageMagick: true});
+	const realPath = fileManager.realPath(img.file);
+	const toImage = p.join(cacheFolder, sha+'.jpg');
 
-			imageLibrary(realPath).resize(img.size, null).quality(95).noProfile().write(p.join(cacheFolder, sha+'.jpg'), function(error){
+	const fits = {
+		poster: 'cover',
+		sidebar: 'outside',
+	};
 
-				if(error)
-				{
-					if(imageUse !== 'gm')
-					{
-						imageLibrary = require('gm').subClass({imageMagick: false});
-						imageUse = 'gm';
+	const autoHeight = {
+		sidebar: true,
+	}; 
 
-						process.nextTick(function() {
-							processTheImageQueue();
-						});
-					}
-					else
-					{
-						imageLibrary = require('gm').subClass({imageMagick: true});
-						imageUse = 'im';
+	const ratios = getRatios();
+	const forceSize = img.forceSize || 150;
 
-						if(jimp === false) jimp = require('jimp');
+	if(compatible.image.convert(img.file)) // Convert unsupported images
+		await workers.convertImage(img.file, {useThreads: 0.3/*0.4*/});
 
-						jimp.read(realPath, function(error, lenna) {
+	const fit = img.type ? fits[img.type] : 'inside';
+	let height = Math.round(img.size * (img.type ? ratios[img.type][forceSize] : 1.5));
 
-							if(error)
-							{
-								img.callback({cache: true, path: escapeBackSlash(realPath), sha: sha}, img.vars);
+	if(img.type && autoHeight[img.type])
+		height = undefined;
 
-								queuedImages.splice(0, 1);
+	return new Promise(function(resolve, reject) {
 
-								if(queuedImages.length > 0)
-								{
-									process.nextTick(function() {
-										processTheImageQueue();
-									});
-								}
-								else
-								{
-									processingTheImageQueue = false;
+		image.resize(realPath, toImage, {width: img.size, height, quality: 95, fit}).then(function(){
 
-									storage.set('cache', data);
-								}
-							}
-							else
-							{
-								lenna.resize(img.size, jimp.AUTO).quality(95).background(0xFFFFFFFF).write(p.join(cacheFolder, sha+'.jpg'), function(){
-
-									if(typeof data[sha] == 'undefined') data[sha] = {lastAccess: time()};
-
-									data[sha].size = img.size;
-
-									img.callback({cache: true, path: escapeBackSlash(p.join(cacheFolder, sha+'.jpg?size='+img.size)), sha: sha}, img.vars);
-
-									queuedImages.splice(0, 1);
-
-									if(queuedImages.length > 0)
-									{
-										process.nextTick(function() {
-											processTheImageQueue();
-										});
-									}
-									else
-									{
-										processingTheImageQueue = false;
-
-										storage.set('cache', data);
-									}
-
-								});
-							}
-
-						});
-
-					}
-
-				}
-				else
-				{
-					if(typeof data[sha] == 'undefined') data[sha] = {lastAccess: time()};
-
-					data[sha].size = img.size;
-
-					img.callback({cache: true, path: escapeBackSlash(p.join(cacheFolder, sha+'.jpg?size='+img.size)), sha: sha}, img.vars);
-
-					queuedImages.splice(0, 1);
-
-					if(queuedImages.length > 0)
-					{
-						process.nextTick(function() {
-							processTheImageQueue();
-						});
-					}
-					else
-					{
-						processingTheImageQueue = false;
-
-						storage.set('cache', data);
-					}
-				}
-			});
-		}
-		else
-		{
-			if(typeof data[sha] == 'undefined') data[sha] = {lastAccess: time()};
-
+			if(typeof data[sha] === 'undefined') data[sha] = {lastAccess: app.time()};
 			data[sha].size = img.size;
 
-			img.callback({cache: true, path: escapeBackSlash(p.join(cacheFolder, sha+'.jpg?size='+img.size)), sha: sha}, img.vars);
+			img.callback({cache: true, path: escapeBackSlash(addCacheVars(toImage, img.size, img.sha)), sha: sha}, img.vars);
 
-			queuedImages.splice(0, 1);
+			storage.setThrottle('cache', data);
+			resolve();
 
-			if(queuedImages.length > 0)
-			{
-				process.nextTick(function() {
-					processTheImageQueue();
-				});
-			}
-			else
-			{
-				processingTheImageQueue = false;
+		}).catch(function(){
 
-				storage.set('cache', data);
-			}
-		}
+			img.callback({cache: true, path: escapeBackSlash(realPath), sha: sha}, img.vars);
+
+			resolve();
+
+		});
+
 	});
 }
 
-function addImageToQueue(file, size, sha, callback, vars)
+async function addImageToQueue(file, size, sha, callback, vars, type, forceSize)
 {
-	queuedImages.push({file: file, size: size, sha: sha, callback: callback, vars: vars});
+	threads.job('cache', {useThreads: threads.ALL, afterThreads: ['readingRender']}, processTheImageQueue, {file: file, size: size, sha: sha, callback: callback, vars: vars, type: type, forceSize: forceSize});
+}
 
-	if(!processingTheImageQueue)
-	{
-		processingTheImageQueue = true;
+function stopQueue()
+{
+	threads.stop('cache');
+}
 
-		setTimeout(function(){
-
-			process.nextTick(function() {
-				processTheImageQueue();
-			});
-
-		}, 0);
-	}
+function resumeQueue()
+{
+	threads.resume('cache');
 }
 
 function cleanQueue()
 {
-	queuedImages.splice(1, queuedImages.length - 1);
+	threads.clean('cache');
+	if(data !== false) storage.setThrottle('cache', data);
+}
+
+const sizesCache = {};
+
+function getSizes()
+{
+	const devicePixelRatio = window.devicePixelRatio;
+	if(sizesCache[devicePixelRatio]) return sizesCache[devicePixelRatio];
+
+	return sizesCache[devicePixelRatio] = {
+		image: {
+			100: Math.round(devicePixelRatio * 100),
+			150: Math.round(devicePixelRatio * 150),
+			200: Math.round(devicePixelRatio * 200),
+			250: Math.round(devicePixelRatio * 250),
+			300: Math.round(devicePixelRatio * 300),
+		},
+		poster: {
+			100: Math.round(devicePixelRatio * 96),
+			150: Math.round(devicePixelRatio * 146),
+			200: Math.round(devicePixelRatio * 196),
+			250: Math.round(devicePixelRatio * 246),
+			300: Math.round(devicePixelRatio * 296),
+		},
+		sidebar: {
+			80: Math.round(devicePixelRatio * 80),
+		},
+	};
+}
+
+function getRatios()
+{
+	return {
+		image: {
+			100: 1.5,
+			150: 1.5,
+			200: 1.5,
+			250: 1.5,
+			300: 1.5,
+		},
+		poster: {
+			100: 1.52083,
+			150: 1.51369,
+			200: 1.51020,
+			250: 1.50813,
+			300: 1.50675,
+		},
+		sidebar: {
+			80: 1,
+		},
+	};
+}
+
+function imageSizeSha(image)
+{
+	if(image.sha && !image.type && (!image.forceSize || image.forceSize === 150))
+		return image.sha;
+
+	return sha1(addImageVars(image));
+}
+
+function addImageVars(image)
+{
+	const vars = [];
+
+	if(image.type)
+		vars.push('type='+image.type);
+
+	if(image.forceSize && image.forceSize != 150)
+	{
+		const dpr = window.devicePixelRatio;
+		vars.push('size='+Math.round(image.forceSize * dpr));
+	}
+
+	return image.path+(vars.length ? '?'+vars.join('&') : '');
 }
 
 var data = false;
 
 function returnThumbnailsImages(images, callback, file = false)
 {
-	if(!data) data = storage.get('cache');
+	if(!data) data = storage.get('cache') || {};
 
-	let single = images.length === undefined ? true : false;
+	const single = images.length === undefined ? true : false;
 	images = single ? [images] : images;
 
-	let size = Math.round(window.devicePixelRatio * 150);
+	const sizes = getSizes();
 
 	let thumbnail = {};
-	let thumbnails = {};
-	let toGenerateThumbnails = [];
-	let toGenerateThumbnailsData = {};
+	const thumbnails = {};
+	const toGenerateThumbnails = [];
+	const toGenerateThumbnailsData = {};
+
+	const time = app.time();
 
 	for(let i = 0, len = images.length; i < len; i++)
 	{
-		let image = images[i];
+		const image = images[i];
+		const forceSize = image.forceSize || 150;
 
-		let sha = image.sha || sha1(image.path);
-		let imgCache = data[sha];
+		const sha = imageSizeSha(image);
+		const imgCache = data[sha];
 
-		let path = p.join(cacheFolder, sha+'.jpg?size='+size);
+		const size = image.type ? sizes[image.type][forceSize] : sizes.image[forceSize];
+		const path = addCacheVars(p.join(cacheFolder, sha+'.jpg'), size, sha);
 
 		if(typeof imgCache == 'undefined' || !fs.existsSync(p.join(cacheFolder, sha+'.jpg')))
 		{
 			toGenerateThumbnails.push(image);
-			toGenerateThumbnailsData[image.path] = {sha: sha, vars: image.vars};
+			toGenerateThumbnailsData[image.path] = {sha: sha, vars: image.vars, type: image.type || false, forceSize: forceSize};
 
 			thumbnails[sha] = thumbnail = {cache: false, path: '', sha: sha};
 		}
 		else
 		{
-			data[sha].lastAccess = time();
+			data[sha].lastAccess = time;
 
 			if(imgCache.size != size)
 			{
 				toGenerateThumbnails.push(image);
-				toGenerateThumbnailsData[image.path] = {sha: sha, vars: image.vars};
+				toGenerateThumbnailsData[image.path] = {sha: sha, vars: image.vars, type: image.type || false, forceSize: forceSize};
 
 				thumbnails[sha] = thumbnail = {cache: true, path: escapeBackSlash(path), sha: sha};
 			}
@@ -222,11 +226,18 @@ function returnThumbnailsImages(images, callback, file = false)
 
 	if(toGenerateThumbnails.length > 0 && file)
 	{
-		// Consider adding this to a queue if it causes problems
-		file.makeAvailable(toGenerateThumbnails, function(image) {
+		threads.job('cacheMakeAvailable', {useThreads: threads.SINGLE, delay: 50}, async function() {
 
-			let data = toGenerateThumbnailsData[image.path];
-			addImageToQueue(image.path, size, data.sha, callback, data.vars || false);
+			await file.makeAvailable(toGenerateThumbnails, function(image) {
+
+				const data = toGenerateThumbnailsData[image.path];
+				const size = data.type ? sizes[data.type][data.forceSize] : sizes.image[data.forceSize];
+
+				addImageToQueue(image.path, size, data.sha, callback, data.vars || false, data.type, data.forceSize);
+
+			}, false, true);
+
+			file.afterDestroy();
 
 		});
 	}
@@ -234,26 +245,630 @@ function returnThumbnailsImages(images, callback, file = false)
 	return single ? thumbnail : thumbnails;
 }
 
-
-function writeFile(name, content)
+async function writeFile(name, content)
 {
 	fs.writeFile(p.join(cacheFolder, name), content, function(){}); 
 }
 
-function readFile(name)
+function writeFileSync(name, content)
 {
-	if(fs.existsSync(p.join(cacheFolder, name)))
-		return fs.readFileSync(p.join(cacheFolder, name), 'utf8');
+	fs.writeFileSync(p.join(cacheFolder, name), content, function(){}); 
+}
+
+var jsonMemory = {};
+
+function setJsonInMemory(name, json)
+{
+	jsonMemory[name] = {
+		json: json,
+		lastUsage: app.time(),
+	};
+}
+
+function readJsonInMemory(name)
+{
+	if(jsonMemory[name])
+	{
+		jsonMemory[name].lastUsage = app.time();
+		return app.copy(jsonMemory[name].json);
+	}
+
+	return false;
+}
+
+function clearJsonInMemory()
+{
+	const time = app.time();
+	const data = [];
+
+	let num = 0;
+
+	for(let key in jsonMemory)
+	{
+		const json = jsonMemory[key];
+
+		if(time - json.lastUsage > 60 * 60) // 1 hour
+		{
+			delete jsonMemory[key];
+
+			continue;
+		}
+
+		num++;
+
+		data.push({
+			name: key,
+			lastUsage: json.lastUsage,
+		});
+	}
+
+	const max = 50;
+
+	if(num > max)
+	{
+		data.sort(function(a, b) {
+
+			if(a.lastUsage === b.lastUsage)
+				return 0;
+
+			return a.lastUsage > b.lastUsage ? 1 : -1;
+
+		});
+
+		for(let i = 0, len = data.length - max; i < len; i++)
+		{
+			delete jsonMemory[data[i].name];
+		}
+	}
+}
+
+setInterval(clearJsonInMemory, 1000 * 60 * 5); // Clear every 5 minutes
+
+function flushJsonMemory()
+{
+	jsonMemory = {};
+}
+
+async function writeJson(name, json, folder = false, memory = true)
+{
+	folder = folder || cacheFolder;
+	if(memory) setJsonInMemory(name, json);
+
+	let encoded, path;
+
+	if(zstd !== false)
+	{
+		path = p.join(folder, name+'.zstd');
+		encoded = await zstdEncoder.encode(Buffer.from(JSON.stringify(json)));
+	}
+	else
+	{
+		path = p.join(folder, name);
+		encoded = JSON.stringify(json);
+	}
+
+	fs.writeFile(path, encoded, function(){});
+}
+
+function writeJsonSync(name, json, folder = false, memory = true)
+{
+	folder = folder || cacheFolder;
+	if(memory) setJsonInMemory(name, json);
+
+	let encoded, path;
+
+	if(zstd !== false)
+	{
+		path = p.join(folder, name+'.zstd');
+		encoded = zstdEncoder.encodeSync(Buffer.from(JSON.stringify(json)));
+	}
+	else
+	{
+		path = p.join(folder, name);
+		encoded = JSON.stringify(json);
+	}
+
+	fs.writeFileSync(path, encoded, function(){});
+}
+
+function readFile(name, folder = false)
+{
+	folder = folder || cacheFolder;
+	let path = p.join(cacheFolder, name);
+
+	if(fs.existsSync(path))
+		return fs.readFileSync(path, 'utf8');
 	else
 		return false;
 }
 
+function readJson(name, folder = false, memory = true)
+{
+	folder = folder || cacheFolder;
+
+	if(memory)
+	{
+		const json = readJsonInMemory(name);
+		if(json) return json;
+	}
+
+	if(zstd !== false)
+	{
+		const path = p.join(folder, name+'.zstd');
+
+		if(fs.existsSync(path))
+		{
+			try
+			{
+				const json = JSON.parse(zstdDecoder.decodeSync(fs.readFileSync(path)));
+				if(memory) setJsonInMemory(name, json);
+				return json;
+			}
+			catch(error) // Corrupted file, remove it
+			{
+				fs.unlinkSync(path);
+				console.error(error);
+				return false;
+			}
+		}
+		else
+		{
+			return false;
+		}
+	}
+	else
+	{
+		const path = p.join(folder, name);
+
+		if(fs.existsSync(path))
+		{
+			try
+			{
+				const json = JSON.parse(fs.readFileSync(path));
+				if(memory) setJsonInMemory(name, json);
+				return json;
+			}
+			catch(error) // Corrupted file, remove it
+			{
+				fs.unlinkSync(path);
+				console.error(error);
+				return false;
+			}
+		}
+		else
+		{
+			return false;
+		}
+	}
+}
+
+function validateJson(name)
+{
+	if(zstd !== false)
+	{
+		const path = p.join(cacheFolder, name+'.zstd');
+
+		if(fs.existsSync(path))
+		{
+			let json;
+ 
+			try
+			{
+				json = fs.readFileSync(path);
+			}
+			catch
+			{
+				return 'readError';
+			}
+
+			try
+			{
+				json = zstdDecoder.decodeSync(json);
+			}
+			catch
+			{
+				return 'corruptedZstd';
+			}
+
+			try
+			{
+				JSON.parse(json);
+			}
+			catch
+			{
+				return 'corruptedJson';
+			}
+
+			return 'correct';
+		}
+		else
+		{
+			return 'notInCache';
+		}
+	}
+	else
+	{
+		const path = p.join(cacheFolder, name);
+
+		if(fs.existsSync(path))
+		{
+			let json;
+
+			try
+			{
+				json = fs.readFileSync(path);
+			}
+			catch
+			{
+				return 'readError';
+			}
+
+			try
+			{
+				JSON.parse(json);
+			}
+			catch
+			{
+				return 'corruptedJson';
+			}
+
+			return 'correct';
+		}
+		else
+		{
+			return 'notInCache';
+		}
+	}
+}
+
+function existsFile(name, folder = false)
+{
+	folder = folder || cacheFolder;
+	let path = p.join(folder, name);
+
+	if(fs.existsSync(path))
+		return true;
+	else
+		return false;
+}
+
+function existsJson(name, folder = false)
+{
+	folder = folder || cacheFolder;
+	let path = p.join(folder, (zstd !== false) ? name+'.zstd' : name);
+
+	if(fs.existsSync(path))
+		return true;
+	else
+		return false;
+}
+
+function deleteJson(name, folder = false)
+{
+	folder = folder || cacheFolder;
+	let path = p.join(folder, (zstd !== false) ? name+'.zstd' : name);
+
+	if(fs.existsSync(path))
+	{
+		fs.unlinkSync(path);
+		delete jsonMemory[name];
+
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+}
+
+function addCacheVars(path, size, sha)
+{
+	return path+'?size='+size+(cacheImagesDeleted[sha] ? '&a='+cacheImagesDeleted[sha] : '');
+}
+
+function simpleExists(image)
+{
+	if(!data) data = storage.get('cache') || {};
+
+	const sha = imageSizeSha(image);
+	return !!data[sha];
+}
+
+var cacheImagesDeleted = [];
+
+async function _deleteInCache(sha)
+{
+	const cachePath = p.join(cacheFolder, sha+'.jpg');
+
+	if(data[sha])
+		delete data[sha];
+
+	if(fs.existsSync(cachePath))
+	{
+		fs.unlinkSync(cachePath);
+
+		cacheImagesDeleted[sha] = cacheImagesDeleted[sha] ? cacheImagesDeleted[sha] + 1 : 1;
+	}
+		
+	return;
+}
+
+async function deleteInCache(path)
+{
+	const sizes = getSizes();
+	const variants = [];
+
+	for(const type in sizes)
+	{
+		for(const size in sizes[type])
+		{
+			variants.push({
+				path,
+				forceSize: size,
+				...(type === 'image' ? {} : {type}),
+			});
+		}
+	}
+
+	for(let i = 0, len = variants.length; i < len; i++)
+	{
+		const variant = variants[i];
+
+		const sha = imageSizeSha(variant);
+		await _deleteInCache(sha);
+	}
+
+	return;
+}
+
+
+function deleteInCacheSha(sha, returnFileSize = false)
+{
+	let cachePath = p.join(cacheFolder, sha+'.jpg');
+
+	if(data[sha])
+		delete data[sha];
+
+	let fileSize = 0;
+
+	if(fs.existsSync(cachePath))
+	{
+		if(returnFileSize)
+			fileSize = fs.statSync(cachePath).size;
+
+		fs.unlinkSync(cachePath);
+	}
+
+	return fileSize;
+}
+
+function purge()
+{
+	if(!data) data = storage.get('cache') || {};
+
+	let time = app.time();
+
+	let cacheMaxSize = config.cacheMaxSize * 1000 * 1000;
+	let cacheMaxOld = config.cacheMaxOld * 60 * 60 * 24;
+
+	let dataArray = [];
+
+	// Remove not usage files
+	for(let sha in data)
+	{
+		if(time - data[sha].lastAccess > cacheMaxOld)
+		{
+			deleteInCacheSha(sha);
+		}
+		else
+		{
+			dataArray.push({
+				sha: sha,
+				lastAccess: data[sha].lastAccess,
+			});
+		}
+	}
+
+	// Remove unreferenced files
+	let files = fs.readdirSync(cache.folder);
+
+	for(let i = 0, len = files.length; i < len; i++)
+	{
+		let file = files[i];
+
+		let sha = extract(/^([a-z0-9]+)\.jpg/iu, file, 1);
+
+		if(sha && !data[sha])
+			deleteInCacheSha(sha);
+	}
+
+	// Remove if exede cache max size
+	let cacheSize = fileManager.dirSizeSync(cache.folder);
+
+	if(cacheSize > cacheMaxSize)
+	{
+		let cacheMaxSizeMargin = cacheMaxSize * 0.8; // Remove 20% if cache exceeds maximum size to avoid running this every time
+
+		dataArray.sort(function(a, b) {
+
+			if(a.lastAccess === b.lastAccess)
+				return 0;
+
+			return a.lastAccess > b.lastAccess ? 1 : -1;
+
+		});
+
+		for(let i = 0, len = dataArray.length; i < len; i++)
+		{
+			let size = deleteInCacheSha(dataArray[i].sha, true);
+
+			cacheSize -= size;
+
+			if(cacheSize < cacheMaxSizeMargin)
+				break;
+		}
+	}
+
+	storage.set('cache', data);
+
+	// Purge reading progress cache
+	reading.progress.purge();
+
+	// Purge folder thumbnails cache
+	folderThumbnails.purge();
+
+	return;
+}
+
+function _validate(files, type = '')
+{
+	const correct = [];
+	const corruptedZstd = [];
+	const corruptedJson = [];
+	const readError = [];
+	const notInCache = [];
+
+	for(let i = 0, len = files.length; i < len; i++)
+	{
+		const file = files[i];
+		const path = (type == 'servers' ? serverClient.fixPath(file.path) : file.path);
+		const sha = sha1(path);
+		const name = (type == 'servers' ? 'server-files-'+sha+'.json' : 'compressed-files-'+sha+'.json');
+
+		const status = validateJson(name);
+
+		if(status == 'correct')
+			correct.push(path);
+		else if(status == 'corruptedZstd')
+			corruptedZstd.push(path);
+		else if(status == 'corruptedJson')
+			corruptedJson.push(path);
+		else if(status == 'readError')
+			readError.push(path);
+		else if(status == 'notInCache')
+			notInCache.push(path);
+	}
+
+	console.log('Correct: '+correct.length+'\nCorrupted Zstd: '+corruptedZstd.length+'\nCorrupted Json: '+corruptedJson.length+'\nRead Error: '+readError.length+'\nNot in Cache: '+notInCache.length);
+	console.log({
+		correct: correct,
+		corruptedZstd: corruptedZstd,
+		corruptedJson: corruptedJson,
+		readError: readError,
+		notInCache: notInCache,
+	});
+	console.log(' ');
+}
+
+function validateThumbnails(images, type = '')
+{
+	const correct = [];
+	const errorOnlyFile = [];
+	const errorOnlyData = [];
+	const notThumbnails = [];
+
+	const size = Math.round(window.devicePixelRatio * 150);
+
+	for(let i = 0, len = images.length; i < len; i++)
+	{
+		const image = images[i];
+		const sha = image.sha || sha1(image.path);
+		const imgCache = data[sha];
+
+		const exists = fs.existsSync(p.join(cacheFolder, sha+'.jpg'));
+
+		if(typeof imgCache != 'undefined' && exists)
+			correct.push(image.path);
+		else if(typeof imgCache != 'undefined')
+			errorOnlyData.push(image.path);
+		else if(exists)
+			errorOnlyFile.push(image.path);
+		else
+			notThumbnails.push(image.path);
+	}
+
+	console.log('Correct: '+correct.length+'\nError only file: '+errorOnlyFile.length+'\nError only data: '+errorOnlyData.length+'\nNot Thumbnails: '+notThumbnails.length);
+	console.log({
+		correct: correct,
+		errorOnlyFile: errorOnlyFile,
+		errorOnlyData: errorOnlyData,
+		notThumbnails: notThumbnails,
+	});
+	console.log(' ');
+}
+
+function validate()
+{
+	const currentFiles = handlebarsContext.comics;
+
+	const folders = [];
+	const compressed = [];
+	const servers = [];
+	const images = [];
+
+	for(let i = 0, len = currentFiles.length; i < len; i++)
+	{
+		const file = currentFiles[i];
+
+		if(fileManager.isServer(file.path) && file.folder && !file.compressed)
+			servers.push(file);
+		else if(file.compressed)
+			compressed.push(file);
+		else if(file.folder)
+			folders.push(file);
+		else
+			images.push(file);
+	}
+
+	console.log(' ');
+	console.log('Folders: '+folders.length+'\nCompressed files: '+compressed.length+'\nServers: '+servers.length+'\nImages: '+images.length);
+	console.log(' ');
+
+	if(compressed.length)
+	{
+		console.log('Validating cache of compressed files...');
+		_validate(compressed, 'compressed');
+	}
+
+	if(servers.length)
+	{
+		console.log('Validating cache of servers...');
+		_validate(servers, 'servers');
+	}
+
+	if(images.length)
+	{
+		console.log('Validating cache of thumbnail images...');
+		validateThumbnails(images, 'servers');
+	}
+
+	console.log('Done');
+}
+
 module.exports = {
-	folder: cacheFolder,
+	get folder(){return cacheFolder},
+	setCacheFolder: function(folder){cacheFolder = folder},
 	returnThumbnailsImages: returnThumbnailsImages,
 	cleanQueue: cleanQueue,
 	writeFile: writeFile,
+	writeFileSync: writeFileSync,
+	writeJson: writeJson,
+	writeJsonSync: writeJsonSync,
 	readFile: readFile,
-	queuedImages: function(){return queuedImages},
-	processingTheImageQueue: function(){return processingTheImageQueue},
+	readJson: readJson,
+	existsJson: existsJson,
+	deleteJson: deleteJson,
+	existsFile: existsFile,
+	deleteInCache: deleteInCache,
+	simpleExists: simpleExists,
+	flushJsonMemory: flushJsonMemory,
+	imageSizeSha: imageSizeSha,
+	addImageVars: addImageVars,
+	jsonMemory: function(){return jsonMemory},
+	stopQueue: stopQueue,
+	resumeQueue: resumeQueue,
+	purge: purge,
+	validate: validate,
+	zstd: zstd,
+	folderThumbnails,
 };

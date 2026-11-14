@@ -19,7 +19,7 @@ function pollGamepads()
 		}
 	}
 
-	if(_hasGamepads)
+	if(_hasGamepads && !config.disableGamepadInput)
 	{
 		if(!hasGamepads)
 		{
@@ -68,34 +68,35 @@ function gamepadLoop()
 	let buttons = [];
 	let axes = false;
 
-	// Merge all connected gamepad into one
+	// Merge all connected gamepads into one
 	for(let i = 0, len = gamepads.length; i < len; i++)
 	{
 		if(gamepads[i])
 		{
-			let controller = gamepads[i];
+			let gamepad = gamepads[i];
 
-			for(let i = 0, len = controller.buttons.length; i < len; i++)
+			for(let i = 0, len = gamepad.buttons.length; i < len; i++)
 			{
-				let button = controller.buttons[i];
+				let button = gamepad.buttons[i];
 
 				if(button.value == 1 || !buttons[i])
 					buttons[i] = button;
 			}
 
-			// Avoid controller dead zone
-			let deadZone = config.controllerDeadZone || 0.06;
+			// Avoid gamepad dead zone
+			let deadZone = config.gamepadDeadZone;
+			let aAbs0 = Math.abs(gamepad.axes[0]), aAbs1 = Math.abs(gamepad.axes[1]), aAbs2 = Math.abs(gamepad.axes[2]), aAbs3 = Math.abs(gamepad.axes[3]);
 
-			let aAbs0 = Math.abs(controller.axes[0]), aAbs1 = Math.abs(controller.axes[1]), aAbs2 = Math.abs(controller.axes[2]), aAbs3 = Math.abs(controller.axes[3]);
-
-			// Prioritize first controller
+			// Prioritize first gamepad
 			if(!axes && (aAbs0 > deadZone || aAbs1 > deadZone || aAbs2 > deadZone || aAbs3 > deadZone))
 			{
+				let sensitivity = config.gamepadSensitivity / 5;
+
 				axes = [
-					(aAbs0 > deadZone ? controller.axes[0] : 0),
-					(aAbs1 > deadZone ? controller.axes[1] : 0),
-					(aAbs2 > deadZone ? controller.axes[2] : 0),
-					(aAbs3 > deadZone ? controller.axes[3] : 0),
+					(aAbs0 > deadZone ? gamepad.axes[0] * sensitivity : 0),
+					(aAbs1 > deadZone ? gamepad.axes[1] * sensitivity : 0),
+					(aAbs2 > deadZone ? gamepad.axes[2] * sensitivity : 0),
+					(aAbs3 > deadZone ? gamepad.axes[3] * sensitivity : 0),
 				];
 			}
 		}
@@ -186,8 +187,6 @@ function gamepadLoop()
 
 			if(sendEvent && !firstGamepadEvent)
 			{
-				console.log('sendEvent');
-
 				status.eventNum++;
 				status.lastEvent = now;
 
@@ -283,7 +282,7 @@ var lastUpdateBrowsableItemsSkiped = false;
 var hasKeyboardNavigation = false;
 var fromGoBack = false;
 
-function updateBrowsableItems(key = false, force = false, _highlightItem = true)
+function updateBrowsableItems(key = false, force = false, _highlightItem = true, ignore = {})
 {
 	if(key != currentKey) prevKey = currentKey;
 	currentKey = key;
@@ -301,16 +300,18 @@ function updateBrowsableItems(key = false, force = false, _highlightItem = true)
 	currentScreenItems = [];
 	currentHighlightItem = -1;
 
-	let toHighlight = false;
+	let toHighlight = false, index = 0;
 
-	// Menu
-	let menu = template._globalElement().querySelector('.menu-simple.a');
-	let hasMenu = menu ? true : false;
+	let has = false;
 
-	if(hasMenu)
+	// Search
+	let search = template._globalElement().querySelector('.search-bar.active');
+	let hasSearch = search && !ignore.search ? true : false;
+
+	if(hasSearch)
 	{
-		let items = menu.querySelectorAll('.gamepad-item');
-		let scrollElement = currentScrollElement = menu;
+		let items = search.querySelectorAll('.gamepad-item');
+		let scrollElement = currentScrollElement = search.querySelector('.search-bar-results');
 		let scrollTop = scrollElement.scrollTop;
 		currentScrollElementRect = scrollElement.getBoundingClientRect();
 
@@ -320,7 +321,7 @@ function updateBrowsableItems(key = false, force = false, _highlightItem = true)
 			let rect = item.getBoundingClientRect();
 
 			if((toHighlight === false && item.classList.contains('gamepad-to-highlight')) || item.classList.contains('gamepad-highlight'))
-				toHighlight = i;
+				toHighlight = index;
 
 			if(rect.height != 0 || rect.width != 0)
 			{
@@ -338,15 +339,22 @@ function updateBrowsableItems(key = false, force = false, _highlightItem = true)
 					top: rect.top + scrollTop,
 					bottom: rect.bottom + scrollTop,
 				});
+
+				index++;
 			}
 		}
 	}
 
-	// Content right
-	if(!hasMenu)
+	has = hasSearch || has;
+
+	// Dialog
+	let dialog = template._globalElement().querySelector('.dialogs .dialog:not(.hide)');
+	let hasDialog = dialog && !ignore.dialog ? true : false;
+
+	if(hasDialog && !has)
 	{
-		let items = template._contentRight().querySelectorAll('.gamepad-item');
-		let scrollElement = currentScrollElement = template.contentRight().children().get(0);
+		let items = dialog.querySelectorAll('.gamepad-item');
+		let scrollElement = currentScrollElement = dialog.querySelector('.dialog-content');
 		let scrollTop = scrollElement.scrollTop;
 		currentScrollElementRect = scrollElement.getBoundingClientRect();
 
@@ -356,9 +364,105 @@ function updateBrowsableItems(key = false, force = false, _highlightItem = true)
 			let rect = item.getBoundingClientRect();
 
 			if((toHighlight === false && item.classList.contains('gamepad-to-highlight')) || item.classList.contains('gamepad-highlight'))
-				toHighlight = i;
+				toHighlight = index;
 
 			if(rect.height != 0 || rect.width != 0)
+			{
+				currentScreenItems.push({
+					inScroll: true,
+					block: 'top',
+					element: item,
+					x: rect.left,
+					y: rect.top + scrollTop,
+					centerY: rect.top + (rect.height / 2) + scrollTop,
+					onLeft: item.dataset.gamepadLeft,
+					onRight: item.dataset.gamepadRight,
+					left: rect.left,
+					right: rect.right,
+					top: rect.top + scrollTop,
+					bottom: rect.bottom + scrollTop,
+				});
+
+				index++;
+			}
+		}
+	}
+
+	has = hasDialog || has;
+
+	// Menu
+	let menu = template._globalElement().querySelector('.menu-simple.a');
+	let hasMenu = menu && !ignore.menu ? true : false;
+
+	if(hasMenu && !has)
+	{
+		let items = menu.querySelectorAll('.gamepad-item');
+		let scrollElement = currentScrollElement = menu.querySelector('.menu-simple-content');
+		let scrollTop = scrollElement.scrollTop;
+		currentScrollElementRect = scrollElement.getBoundingClientRect();
+
+		for(let i = 0, len = items.length; i < len; i++)
+		{
+			let item = items[i];
+			let rect = item.getBoundingClientRect();
+
+			if((toHighlight === false && item.classList.contains('gamepad-to-highlight')) || item.classList.contains('gamepad-highlight'))
+				toHighlight = index;
+
+			if(rect.height != 0 || rect.width != 0)
+			{
+				currentScreenItems.push({
+					inScroll: true,
+					block: 'top',
+					element: item,
+					x: rect.left,
+					y: rect.top + scrollTop,
+					centerY: rect.top + (rect.height / 2) + scrollTop,
+					onLeft: item.dataset.gamepadLeft,
+					onRight: item.dataset.gamepadRight,
+					left: rect.left,
+					right: rect.right,
+					top: rect.top + scrollTop,
+					bottom: rect.bottom + scrollTop,
+				});
+
+				index++;
+			}
+		}
+	}
+
+	has = hasMenu || has;
+
+	// Content right
+	const rectCache = {};
+
+	if(!has && !ignore.right)
+	{
+		let items = template._contentRight().querySelectorAll('.gamepad-item');
+		let scrollElement = currentScrollElement = template._contentRight().firstElementChild;
+		let scrollTop = scrollElement.scrollTop;
+		currentScrollElementRect = scrollElement.getBoundingClientRect();
+
+		for(let i = 0, len = items.length; i < len; i++)
+		{
+			let item = items[i];
+			let rect = item.getBoundingClientRect();
+
+			if((toHighlight === false && item.classList.contains('gamepad-to-highlight')) || item.classList.contains('gamepad-highlight'))
+				toHighlight = index;
+
+			const gamepadNotOutside = item.closest('.gamepad-not-outside');
+			let outside = false;
+
+			if(gamepadNotOutside)
+			{
+				let rectNotOutside = rectCache[gamepadNotOutside] = rectCache[gamepadNotOutside] || gamepadNotOutside.getBoundingClientRect();
+
+				if(rect.top > rectNotOutside.bottom || rect.left > rectNotOutside.right)
+					outside = true;
+			}
+
+			if((rect.height != 0 || rect.width != 0) && !outside)
 			{
 				currentScreenItems.push({
 					inScroll: true,
@@ -374,12 +478,14 @@ function updateBrowsableItems(key = false, force = false, _highlightItem = true)
 					top: rect.top + scrollTop,
 					bottom: rect.bottom + scrollTop,
 				});
+
+				index++;
 			}
 		}
 	}
 
 	// Content left
-	if(!hasMenu)
+	if(!has && !ignore.left)
 	{
 		let items = template._contentLeft().querySelectorAll('.gamepad-item');
 
@@ -407,6 +513,8 @@ function updateBrowsableItems(key = false, force = false, _highlightItem = true)
 					top: rect.top,
 					bottom: rect.bottom,
 				});
+
+				index++;
 			}
 		}
 	}
@@ -468,10 +576,21 @@ function scrollToItem(item)
 	if(scrollTop < 0)
 		scrollTop = 0;
 
+	if(scrollTop > currentScrollElement.scrollHeight - currentScrollElementRect.height)
+		scrollTop = currentScrollElement.scrollHeight - currentScrollElementRect.height + 1;
+
 	if(scrollTop !== prevScrollTop)
 		$(currentScrollElement).stop(true).animate({scrollTop: scrollTop+'px'}, 300, $.bez([0.22, 0.6, 0.3, 1]));
 
 	prevScrollTop = scrollTop;
+}
+
+function bestDistance(start, end, start1, end1)
+{
+	if(start > start1 && start < end1)
+		return 0;
+
+	return start - start1;
 }
 
 function highlightClosestItem(key)
@@ -506,14 +625,14 @@ function highlightClosestItem(key)
 					else if(key == 1)
 						x = current.right - item.left;
 					else
-						x = current.x - item.x;
+						x = bestDistance(current.left, current.right, item.left, item.right);
 
 					if(key == 2)
 						y = current.top - item.bottom;
 					else if(key == 3)
 						y = current.bottom - item.top;
 					else
-						y = current.y - item.y;
+						y = bestDistance(current.top, current.bottom, item.top, item.bottom);
 
 					let d = Math.sqrt(x ** 2 + y ** 2); // Distance
 					
@@ -578,9 +697,15 @@ function goHighlightItem()
 		else
 		{
 			let _switch = current.element.querySelector('.switch');
+			let _checkbox = current.element.querySelector('.checkbox');
+			let _select = current.element.querySelector('.select');
 
 			if(_switch)
 				$(_switch).trigger('click');
+			else if(_checkbox)
+				$(_checkbox).trigger('click');
+			else if(_select)
+				$(_select).trigger('click');
 			else
 				$(current.element).trigger('click');
 		}
@@ -599,6 +724,9 @@ function showMenu()
 {
 	let query = !onReading ? '#index-menu-gamepad' : '#reading-menu-gamepad';
 
+	dom.query('.gamepad-reading-music').css({display: !handlebarsContext.hasMusic ? 'none' : ''});
+	dom.query('.gamepad-only-root').css({display: !handlebarsContext.page.labelOrFavorites ? 'none' : ''});
+
 	if(document.querySelector(query+' .menu-simple.a'))
 		events.desactiveMenu(query);
 	else
@@ -609,14 +737,7 @@ function showMenu()
 		let viewIcon = document.querySelector('.menu-gamepad-view-icon');
 		if(!viewIcon) return;
 
-		let icon = '';
-
-		if(handlebarsContext.comicsIndex)
-			icon = (config.viewIndex == 'module') ? 'view_module' : 'view_list';
-		else
-			icon = (config.view == 'module') ? 'view_module' : 'view_list';
-
-		viewIcon.innerHTML = icon;
+		viewIcon.innerHTML = (handlebarsContext.page.view == 'module') ? 'view_module' : 'view_list';
 	}
 }
 
@@ -676,18 +797,34 @@ function buttonKey(button = false)
 	return -1;
 }
 
-function goBack()
+function goBack(fromKeyboard = false)
 {
-	let menuActive = document.querySelector('.menu-close.a');
+	if(fromKeyboard)
+		hasKeyboardNavigation = true;
 
-	if(menuActive)
+	// Close dialog
+	const dialogActive = document.querySelector('.dialogs .dialog');
+
+	if(dialogActive)
 	{
-		eval(menuActive.getAttribute('onclick'));
+		events.closeDialog();
 
 		return;
 	}
 
-	let barBack = document.querySelector('.bar-back.active, .bar-back.show');
+	// Close menu
+	const menuActive = document.querySelector('.menu-close.a');
+
+	if(menuActive)
+	{
+		const menu = menuActive.closest('.menu');
+		if(menu) events.desactiveMenu(menu);
+
+		return;
+	}
+
+	// Go back
+	const barBack = document.querySelector('.bar-left.active .bar-back, .bar-left.show .bar-back, .bar-back.active, .bar-back.show');
 
 	if(barBack)
 	{
@@ -696,12 +833,40 @@ function goBack()
 	}
 }
 
-setButtonEvent('browsableItems', [0, 2, 3, 9, 12, 13, 14, 15, 16], function(key) {
+function goForwards(fromKeyboard = false)
+{
+	if(fromKeyboard)
+		hasKeyboardNavigation = true;
+
+	// Close dialog
+	let dialogActive = document.querySelector('.dialogs .dialog');
+
+	if(dialogActive)
+	{
+		events.closeDialog();
+
+		return;
+	}
+
+	// Close menu
+	let menuActive = document.querySelector('.menu-close.a');
+
+	if(menuActive)
+	{
+		const menu = menuActive.closest('.menu');
+		if(menu) events.desactiveMenu(menu);
+
+		return;
+	}
+
+	// Go forwards
+	dom.history.goForwards();
+}
+
+setButtonEvent('browsableItems', [0, 3, 9, 12, 13, 14, 15, 16], function(key) {
 
 	if(key == 0)
 		goHighlightItem();
-	else if(key == 2)
-		highlightItemContextMenu();
 	else if(key == 3)
 		highlightItemContextMenu();
 	else if(key == 12)
@@ -727,12 +892,7 @@ setButtonEvent('fullscreen', 11, function(key) {
 
 	if(!onReading)
 	{
-		let win = electronRemote.getCurrentWindow();
-		let isFullScreen = win.isFullScreen();
-
-		reading.hideContent(!isFullScreen);
-		win.setFullScreen(!isFullScreen);
-		win.setMenuBarVisibility(isFullScreen);
+		fullScreen();
 	}
 
 });
@@ -744,31 +904,36 @@ window.addEventListener('keydown', function(event) {
 
 	if((!onReading || document.querySelector('.menu-simple.a')) || key == 8)
 	{
-		if(key == 8 || key == 13 || key == 37 || key == 38 || key == 39 || key == 40)
+		let inputIsFocused = shortcuts.inputIsFocused();
+
+		if(!inputIsFocused || inputIsFocused.classList.contains('search-input'))
 		{
-			event.preventDefault();
+			if(((key == 8 || key == 37 || key == 39) && !inputIsFocused) || key == 13 || key == 38 || key == 40)
+			{
+				event.preventDefault();
 
-			hasKeyboardNavigation = true;
+				hasKeyboardNavigation = true;
 
-			if(key == 8)
-				goBack();
-			else if(key == 13)
-				goHighlightItem();
-			else if(key == 37)
-				highlightClosestItem(0);
-			else if(key == 38)
-				highlightClosestItem(2);
-			else if(key == 39)
-				highlightClosestItem(1);
-			else if(key == 40)
-				highlightClosestItem(3);
+				if(key == 8)
+					goBack();
+				else if(key == 13)
+					goHighlightItem();
+				else if(key == 37)
+					highlightClosestItem(0);
+				else if(key == 38)
+					highlightClosestItem(2);
+				else if(key == 39)
+					highlightClosestItem(1);
+				else if(key == 40)
+					highlightClosestItem(3);
 
-			if(lastUpdateBrowsableItemsSkiped)
-				updateBrowsableItems(currentKey, true);
-		}
-		else
-		{
-			// console.log(key);
+				if(lastUpdateBrowsableItemsSkiped)
+					updateBrowsableItems(currentKey, true);
+			}
+			else
+			{
+				// console.log(key);
+			}
 		}
 	}
 	
@@ -777,7 +942,10 @@ window.addEventListener('keydown', function(event) {
 // Update Browsable Items position if window size its changed
 var gamepadResizeST = false;
 
-window.addEventListener('resize', function() {
+window.addEventListener('resize', function(){
+
+	if(!windowHasLoaded)
+		return;
 
 	gamepadResizeST = setTimeout(function(){
 
@@ -796,6 +964,7 @@ module.exports = {
 	updateBrowsableItemsPrevKey: updateBrowsableItemsPrevKey,
 	cleanBrowsableItems: cleanBrowsableItems,
 	goBack: goBack,
+	goForwards: goForwards,
 	buttonName: buttonName,
 	buttonKey: buttonKey,
 	buttonEvents: function(){return buttonEvents},

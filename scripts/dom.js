@@ -1,622 +1,765 @@
-var _dom = function(_this, string = false, querySelectorAll = false) { 
-
-	this._this = _this;
-
-	if(string)
-	{
-		if(querySelectorAll)
-		{
-			this._this = document.querySelectorAll(this._this);
-		}
-		else
-		{
-			let __this = document.querySelector(this._this);
-
-			if(__this)
-				this._this = [__this];
-			else
-				this._this = [];
-		}
-	}
-	else
-	{
-		if(!this._this)
-			this._this = [];
-		else if(this._this.length === undefined)
-			this._this = [this._this];
-	}
-
-	this.each = function(callback){
-
-		for(let i = 0, len = this._this.length; i < len; i++)
-		{
-			callback.call(this._this[i]);
-		}
-
-		return this;
-	}
-
-	this.remove = function() {
-
-		for(let i = 0, len = this._this.length; i < len; i++)
-		{
-			this._this[i].remove();
-		}
-
-		delete this._this;
-		delete this;
-	}
-
-	this.find = function(query, all = false) {
-
-		let newThis = [];
-
-		for(let i = 0, len = this._this.length; i < len; i++)
-		{
-			if(all)
-			{
-				newThis = [...newThis, ...this._this[i].querySelectorAll(query)];
-			}
-			else
-			{
-				let _this = this._this[i].querySelector(query);
-
-				if(_this)
-					newThis.push(_this);
-			}
-		}
-
-		this._this = newThis;
-
-		return this;
-	}
-
-	this.getParents = function(element) {
-
-		let result = [];
-
-		for(let parent = element && element.parentElement; parent; parent = parent.parentElement)
-		{
-			result.push(parent);
-		}
-
-		return result;
-	}
-
-	this.parents = function(query, all = false)
-	{
-		let newThis = [];
-
-		for(let i = 0, len = this._this.length; i < len; i++)
-		{
-			let parents = this.getParents(this._this[i]);
-
-			for(let i2 = 0, len2 = parents.length; i2 < len2; i2++)
-			{
-				if(parents[i2].matches(query))
-				{
-					newThis.push(parents[i2]);
-				
-					if(!all)
-						break;
-				}
-			}
-		}
-
-		this._this = newThis;
-
-		return this;
-	}
-
-	this.siblings = function(query = false, all = false) {
-
-		let newThis = [];
-
-		for(let i = 0, len = this._this.length; i < len; i++)
-		{
-			let parentChildren = this._this[i].parentElement.children;
-
-			for(let i2 = 0, len2 = parentChildren.length; i2 < len2; i2++)
-			{
-				if((query === false || parentChildren[i2].matches(query)) && parentChildren[i2] !== this._this[i])
-				{
-					newThis.push(parentChildren[i2]);
-
-					if(!all)
-						break;
-				}
-			}
-		}
-
-		this._this = newThis;
-
-		return this;
-
-	}
-
-	this.addClass = function() {
-
-		for(let i = 0, len = this._this.length; i < len; i++)
-		{
-			this._this[i].classList.add(...arguments);
-		}
-
-		return this;
-	}
-
-	this.removeClass = function() {
-
-		for(let i = 0, len = this._this.length; i < len; i++)
-		{
-			this._this[i].classList.remove(...arguments);
-		}
-
-		return this;
-	}
-
-	this.class = function(active) {
-
-		let _arguments = Array.from(arguments);
-		_arguments.shift();
-
-		if(active)
-			this.addClass(..._arguments);
-		else
-			this.removeClass(..._arguments);
-	}
-
-	this.setAttribute = function(name, value) {
-
-		for(let i = 0, len = this._this.length; i < len; i++)
-		{
-			this._this[i].setAttribute(name, value);
-		}
-
-		return this;
-	}
-
-	this.getAttribute = function(attribute) {
-
-		for(let i = 0, len = this._this.length; i < len; i++)
-		{
-			let value = this._this[i].getAttribute(attribute);
-			if(value) return value;
-		}
-
-		return '';
-	}
-
-	this.scrollTop = function(scrollTop = false) {
-
-		if(scrollTop !== false)
-		{
-			for(let i = 0, len = this._this.length; i < len; i++)
-			{
-				this._this[i].scrollTop = scrollTop;
-			}
-
-			return this;
-		}
-		else
-		{
-			if(this._this.length > 0)
-				return this._this[0].scrollTop;
-
-			return 0;
-		}
-
-	}
-
-	this.css = function(css) {
-
-		for(let key in css)
-		{
-			let value = css[key];
-
-			for(let i = 0, len = this._this.length; i < len; i++)
-			{
-				this._this[i].style[key] = value;
-			}
-		}
-
-		return this;
-	}
-
-	this.html = function(html) {
-
-		for(let i = 0, len = this._this.length; i < len; i++)
-		{
-			this._this[i].innerHTML = html;
-		}
-
-		return this;
-	}
-
-	this.append = function(html) {
-
-		for(let i = 0, len = this._this.length; i < len; i++)
-		{
-			this._this[i].insertAdjacentHTML('beforeend', html);
-		}
-
-		return this;
-	}
-
-	this.text = function(html) {
-
-		for(let i = 0, len = this._this.length; i < len; i++)
-		{
-			this._this[i].innerHTML = playmax.text(html);
-		}
-
-		return this;
-	}
-
-	this.get = function(index) {
-
-		return this._this[index];
-
-	}
-
-	this.this = function() {
-
-		return this._this;
-
-	}
-
-	this.delete = function() {
-
-		delete this._this;
-		delete this;
-
-	}
-
-	this.destroy = function() {
-
-		delete this._this;
-		delete this;
-
-	}
-}
+const domPoster = require(p.join(appDir, '.dist/dom/poster.js')),
+	domManager = require(p.join(appDir, '.dist/dom/dom.js')),
+	labels = require(p.join(appDir, '.dist/dom/labels.js')),
+	fileInfo = require(p.join(appDir, '.dist/dom/file-info.js')),
+	clearFileCache = require(p.join(appDir, '.dist/dom/clear-file-cache.js')),
+	search = require(p.join(appDir, '.dist/dom/search.js')),
+	header = require(p.join(appDir, '.dist/dom/header.js')),
+	boxes = require(p.join(appDir, '.dist/dom/boxes.js')),
+	history = require(p.join(appDir, '.dist/dom/history.js')),
+	scroll = require(p.join(appDir, '.dist/dom/scroll.js')),
+	sort = require(p.join(appDir, '.dist/dom/sort.mjs')).default,
+	multiSelect = require(p.join(appDir, '.dist/dom/multi-select.mjs')).default,
+	contextMenu = require(p.join(appDir, '.dist/dom/context-menu.mjs')).default;
+
+const diff = require(p.join(appDir, '.dist/diff.mjs')).default;
 
 /*Page - Index*/
 
 function orderBy(a, b, mode, key = false, key2 = false)
 {
+	let aValue = a;
+	let bValue = b;
+
 	if(key2)
 	{
-		var aValue = a[key][key2];
-		var bValue = b[key][key2];
+		aValue = a[key][key2];
+		bValue = b[key][key2];
 	}
 	else if(key)
 	{
-		var aValue = a[key];
-		var bValue = b[key];
-	}
-	else
-	{
-		var aValue = a;
-		var bValue = b;
+		aValue = a[key];
+		bValue = b[key];
 	}
 
-	if(mode != 'real-numeric')
+	if(mode !== 'real-numeric')
 	{
-		aValue = aValue.toLowerCase();
-		bValue = bValue.toLowerCase();
+		aValue = String(aValue).toLowerCase();
+		bValue = String(bValue).toLowerCase();
 	}
 
-	if(mode == 'simple')
+	switch(mode)
 	{
-		if (aValue > bValue) return 1;
+		case 'simple': {
 
-		if (aValue < bValue) return -1;
+			return aValue > bValue ? 1 : aValue < bValue ? -1 : 0;
 
-		return 0;
-	}
-	else if(mode == 'real-numeric')
-	{
-		if (aValue > bValue) return 1;
-
-		if (aValue < bValue) return -1;
-
-		return 0;
-	}
-	else if(mode == 'numeric')
-	{
-		var matchA = aValue.match(/([0-9]+)/g);
-		var matchB = bValue.match(/([0-9]+)/g);
-
-		if(!matchA) return 1;
-
-		if(!matchB) return -1;
-
-		for (var i = 0; i < matchA.length && i < matchB.length; i++)
-		{
-			if (parseInt(matchA[i]) > parseInt(matchB[i])) return 1;
-
-			if (parseInt(matchA[i]) < parseInt(matchB[i])) return -1;
 		}
+		case 'real-numeric': {
 
-		if (matchA.length > matchB.length) return 1;
+			return Number(aValue) - Number(bValue);
 
-		if (matchA.length < matchB.length) return -1;
-
-		if (aValue > bValue) return 1;
-
-		if (aValue < bValue) return -1;
-
-		return 0;
-	}
-	else if(mode == 'simple-numeric')
-	{
-		var matchA = aValue.match(/([0-9]+|.?)/g);
-		var matchB = bValue.match(/([0-9]+|.?)/g);
-
-		if(!matchA) return 1;
-
-		if(!matchB) return -1;
-
-		for (var i = 0; i < matchA.length && i < matchB.length; i++)
-		{
-			if(!$.isNumeric(matchA[i]) || !$.isNumeric(matchB[i]))
-			{
-				if (matchA[i] > matchB[i]) return 1;
-
-				if (matchA[i] < matchB[i]) return -1;
-			}
-			else
-			{
-				if (parseInt(matchA[i]) > parseInt(matchB[i])) return 1;
-
-				if (parseInt(matchA[i]) < parseInt(matchB[i])) return -1;
-			}
 		}
+		case 'numeric': {
 
-		return (matchA.length < matchB.length) ? 1 : -1;
+			const matchA = aValue.match(/([0-9]+)/g) || [];
+			const matchB = bValue.match(/([0-9]+)/g) || [];
+
+			const lenA = matchA.length;
+			const lenB = matchB.length;
+
+			const len = Math.min(lenA, lenB);
+
+			for(let i = 0; i < len; i++)
+			{
+				const a = matchA[i];
+				const b = matchB[i];
+
+				const diff = Number(a) - Number(b);
+				if(diff !== 0) return diff;
+			}
+
+			if(lenA !== lenB) return lenA - lenB;
+			return aValue === bValue ? 0 : (aValue < bValue ? -1 : 1);
+
+		}
+		case 'simple-numeric': {
+
+			/* // This is slower than the custom implementation below
+			return aValue.localeCompare(bValue, undefined, {
+				numeric: true,
+				sensitivity: 'base'
+			});
+			*/
+
+			const matchA = aValue.split(/(\d+)/);
+			const matchB = bValue.split(/(\d+)/);
+
+			const lenA = matchA.length;
+			const lenB = matchB.length;
+
+			const len = Math.min(lenA, lenB);
+
+			for(let i = 0; i < len; i++)
+			{
+				const a = matchA[i];
+				const b = matchB[i];
+
+				if(/^\d+$/.test(a) && /^\d+$/.test(b))
+				{
+					const diff = Number(a) - Number(b);
+					if(diff !== 0) return diff;
+				}
+				else
+				{
+					if(a !== b) return a < b ? -1 : 1;
+				}
+			}
+
+			return lenA - lenB;
+
+		}
+		case 'shuffle': {
+
+			const value = sort.compareShuffle(aValue, bValue);
+			return value;
+
+		}
 	}
 }
 
-
-//Get reading progres of path
-function getReadingProgress(path, callback)
+function addImageToDom(sha, path, animation = true)
 {
-	path = p.normalize(path);
-
-	var readingProgress = storage.getKey('readingProgress');
-
-	for(let rpPath in readingProgress)
-	{
-		var data = readingProgress[rpPath];
-
-		if(typeof data.progress[path] !== 'undefined')		
-			return data;
-	}
-
-	return false;
-}
-
-function calcReadingProgress(path, mainPath, callback)
-{
-	(function(path, mainPath, callback){
-
-		process.nextTick(function() {
-
-			var progress = calcReadingProgressWD(path, mainPath, callback);
-
-			if(checkError(progress))
-			{
-				(function(error, path, mainPath, callback){
-
-					fileCompressed.addCompressedFilesQueue(error.compressedPath, false, function(files){
-
-						if(!checkError(files))
-							dom.calcReadingProgress(path, mainPath, callback);
-						else
-							callback(files);
-
-					});
-
-				})(progress, path, mainPath, callback)
-			}
-			else
-			{
-				if(callback)
-					callback(progress);
-			}
-		});
-
-	})(path, mainPath, callback);
-}
-
-function calcReadingProgressWD()
-{
-
-}
-
-function addImageToDom(querySelector, path, animation = true)
-{
-	let backgroundImage = 'url('+path+')';
-
-	let src = dom.queryAll('.fi-sha-'+querySelector+' img, .sha-'+querySelector+' img, img.fi-sha-'+querySelector);
-
-	if(src._this.length > 0)
-		src.setAttribute('src', path);
-	else
-		src = dom.queryAll('.fi-sha-'+querySelector+', .sha-'+querySelector+' .item-image').css({backgroundImage: backgroundImage});
-
-	let pi = dom.queryAll('.pi-sha-'+querySelector).css({backgroundImage: backgroundImage});
-	let ri = dom.queryAll('.ri-sha-'+querySelector).setAttribute('src', path);
-	let cr = dom.queryAll('.continue-reading-sha-'+querySelector).css({backgroundImage: backgroundImage});
+	const src = dom.queryAll('img.sha-image-'+sha).setAttribute('src', app.encodeSrcURI(app.shortWindowsPath(path, true)));
 
 	if(animation)
 	{
-		src.addClass('a');
-		pi.addClass('a');
-		cr.addClass('a');
+		src.addClass('a', 'active', 'border');
+	}
+	else
+	{
+		src.addClass('active', 'border');
+		src.filter('.folder-poster-img').addClass('has-poster');
 	}
 }
 
-async function loadFilesIndexPage(file, animation, path, keepScroll, mainPath)
+async function addProgressToDom(sha, progress, animation = true)
 {
-	return file.read().then(async function(files){
+	const src = document.querySelectorAll('.sha-'+sha);
+	const _src = dom.this(src);
 
-		queue.clean('folderThumbnails');
+	if(!animation)
+		_src.addClass('disable-transitions');
 
-		let pathFiles = [];
-
-		if(files)
+	// Fade completed
+	if(handlebarsContext.page.fadeCompleted)
+	{
+		if(progress.completed)
 		{
-			let images = [];
-
-			for(let i = 0, len = files.length; i < len; i++)
+			for(const item of src)
 			{
-				let _file = files[i];
-
-				if(inArray(mime.getType(_file.path), compatibleMime))
-				{
-					images.push(files[i]);
-				}
-			}
-
-			let thumbnails = cache.returnThumbnailsImages(images, function(data){
-
-				addImageToDom(data.sha, data.path);
-
-			}, file);
-
-			for(let i = 0, len = files.length; i < len; i++)
-			{
-				let file = files[i];
-				let fileName = file.name;
-				let filePath = file.path;
-
-				let realPath = fileManager.realPath(filePath, -1);
-
-				if(inArray(mime.getType(realPath), compatibleMime))
-				{
-					let sha = file.sha;
-
-					let thumbnail = thumbnails[file.sha];
-
-					pathFiles.push({
-						sha: sha,
-						name: fileName.replace(/\.[^\.]*$/, ''),
-						path: filePath,
-						mainPath: mainPath,
-						thumbnail: (thumbnail.cache) ? thumbnail.path : '',
-						folder: false,
-					});
-				}
-				else if(file.folder || file.compressed)
-				{
-					let images = await getFolderThumbnails(filePath);
-
-					pathFiles.push({
-						sha: file.sha,
-						name: fileName,
-						path: filePath,
-						mainPath: mainPath,
-						poster: images.poster,
-						images: images.images,
-						folder: true,
-					});
-				}
+				item.firstElementChild.style.opacity = 0.3;
 			}
 		}
-
-		handlebarsContext.comics = pathFiles;
-
-		// Comic reading progress
-		let comic = false, _comics = storage.get('comics');
-
-		for(let i in _comics)
+		else
 		{
-			if(_comics[i].path == mainPath)
+			for(const item of src)
 			{
-				comic = _comics[i];
+				item.firstElementChild.style.opacity = '';
+			}
+		}
+	}
+
+	// Progress bar
+	if(handlebarsContext.page.progressBar)
+	{
+		const _progress = dom.this(src).find('.progress-bar', true);
+		_progress.class(progress.percent, 'show');
+
+		for(const item of _progress._this)
+		{
+			item.firstElementChild.style.transform = 'translateX(calc(-100% + '+progress.percent+'%))';
+			if(item.children[1]) item.children[1].style.transform = 'translateX(calc('+progress.percent+'% + 4px))';
+		}
+	}
+
+	if(handlebarsContext.page.progressPages || handlebarsContext.page.progressPercent)
+		dom.this(src).find('.progress-pages').addClass('show');
+
+	// Pages
+	if(handlebarsContext.page.progressPages)
+		dom.this(src).find('.progress-pages > svg text:first-child textPath, .progress-pages > span', true).html(progress.read+' / '+progress.total);
+
+	// percent
+	if(handlebarsContext.page.progressPercent)
+	{
+		dom.this(src).find('.progress-pages > svg text:nth-child(2) textPath, .progress-percent > span', true).html(progress.percentRound+'%');
+		dom.this(src).find('.progress-percent', true).addClass('show');
+	}
+
+	if(!animation)
+	{
+		await app.sleep(100);
+		_src.removeClass('disable-transitions');
+	}
+}
+
+function setWindowTitle(title = `OpenComic${nightly.build ? ' Nightly' : ''}`)
+{
+	let _title = document.querySelector('head title');
+	_title.innerText = title;
+}
+
+function translatePageName(name)
+{
+	name = name.replace(/^[0-9]+\_sortonly - /, '');
+
+	return name.replace(/^page\-0*([0-9]+)/, language.global.pageAndNumber);
+}
+
+function metadataPathName(file, force = false)
+{
+	const {name, path} = file;
+
+	if(fileManager.isOpds(path) || fileManager.isBase64(name))
+	{
+		return opds.pathName(name);
+	}
+	else if(file.compressed || force)
+	{
+		const metadata = storage.getKey('compressedMetadata', path);
+		if(metadata && metadata.title) return metadata.title;
+	}
+
+	const index = name.lastIndexOf('.');
+	const fileName = name.slice(0, index);
+	const ext = name.slice(index + 1);
+
+	return config.showFileExtension || index === -1 || !fileName || !compatible.open.has(ext) ? name : fileName;
+}
+
+async function readFilesIndexPage(path, mainPath, fromGoBack, notAutomaticBrowsing, fromGoForwards)
+{
+	const file = fileManager.file(path);
+	let files;
+
+	try 
+	{
+		files = await file.read();
+	}
+	catch(error)
+	{
+		console.error(error);
+
+		dom.compressedError(error);
+		fileManager.requestFileAccess.check(path, error);
+
+		return {
+			path: path,
+			mainPath: mainPath,
+			error: error,
+			files: [],
+		};
+	}
+
+	const basic = {
+		path: path,
+		mainPath: mainPath,
+		files: files,
+	};
+
+	// Get comic reading progress image
+	let _readingProgress = relative.get('readingProgress');
+	let readingProgress = _readingProgress[mainPath]?.path ? _readingProgress[mainPath] : false;
+	let readingProgressCurrentPath = (mainPath != path) ? (_readingProgress[path]?.path ? _readingProgress[path] : false) : false;
+
+	// const isCompressed = fileManager.isCompressed(fileManager.firstCompressedFile(path));
+	const isCompressed = fileManager.isCompressed(path);
+	const openingBehavior = isCompressed ? config.openingBehaviorFile : config.openingBehaviorFolder;
+
+	const lastFolder = ['first-page-last', 'continue-reading-last', 'continue-reading-first-page-last'].includes(openingBehavior);
+	let openFirstPage = ['first-page', 'continue-reading-first-page', 'first-page-last', 'continue-reading-first-page-last'].includes(openingBehavior);
+	let openContinueReading = ['continue-reading', 'continue-reading-first-page', 'continue-reading-last', 'continue-reading-first-page-last'].includes(openingBehavior);
+
+	if(openContinueReading && !fromGoBack && !notAutomaticBrowsing && readingProgress)
+	{
+		const isParentPath = fileManager.isParentPath(path, readingProgress.path);
+
+		if(isParentPath || readingProgressCurrentPath)
+		{
+			if(!isParentPath && readingProgressCurrentPath)
+				readingProgress = readingProgressCurrentPath;
+		}
+		else
+		{
+			openContinueReading = false;
+		}
+
+		if(openContinueReading && !fileManager.simpleExists(readingProgress.path))
+			openContinueReading = false;
+	}
+	else
+	{
+		openContinueReading = false;
+	}
+
+	// Only in last deep folded
+	if(lastFolder)
+	{
+		let hasFolder = false;
+
+		for(let i = 0, len = files.length; i < len; i++)
+		{
+			if(files[i].folder || files[i].compressed)
+			{
+				hasFolder = true;
 				break;
 			}
 		}
 
-		let readingProgress = storage.get('readingProgress');
-
-		if(readingProgress[mainPath] && readingProgress[mainPath].lastReading > 0)
+		if(hasFolder)
 		{
-			let path = readingProgress[mainPath].path;
+			openFirstPage = false;
+			openContinueReading = false;
+		}
+	}
+
+	if(openContinueReading && !fromGoBack && !fromGoForwards && !notAutomaticBrowsing)
+	{
+		if(readingProgress.ebook)
+			reading.setNextOpenChapterProgress(readingProgress.chapterIndex, readingProgress.chapterProgress);
+
+		file.destroy();
+
+		return {
+			open: true,
+			path: readingProgress.path,
+			mainPath: mainPath,
+			files: files,
+		};
+	}
+	else if(openFirstPage && !fromGoBack && !fromGoForwards && !notAutomaticBrowsing)
+	{
+		let first;
+
+		if(file.files)
+			file.files = await fileManager.sort(file.files, {extraKey: 'Reading'});
+
+		file.updateConfig({sort: {extraKey: 'Reading'}});
+
+		try
+		{
+			first = await file.images(1);
+		}
+		catch(error)
+		{
+			console.error(error);
+			dom.compressedError(error);
+
+			return basic;
+		}
+
+		if(first)
+		{
+			file.destroy();
+
+			return {
+				open: true,
+				path: first.path,
+				mainPath: mainPath,
+				files: files,
+			};
+		}
+	}
+
+	file.destroy();
+
+	if(config.ignoreSingleFoldersLibrary && !fromGoBack && !fromGoForwards && !notAutomaticBrowsing && files.length == 1 && (files[0].folder || files[0].compressed))
+	{
+		return readFilesIndexPage(files[0].path, mainPath, fromGoBack, notAutomaticBrowsing, fromGoForwards);
+	}
+
+	return basic;
+}
+
+async function loadFilesIndexPage(files, file, animation, path, keepScroll, mainPath, _indexLabel)
+{
+	threads.clean('folderThumbnails');
+
+	let pathFiles = [];
+	let thumbnails = [];
+
+	// Get comic reading progress image
+	let _readingProgress = relative.get('readingProgress');
+
+	let readingProgress = _readingProgress[mainPath]?.path ? _readingProgress[mainPath] : false;
+	let readingProgressCurrentPath = (mainPath != path) ? (_readingProgress[path]?.path ? _readingProgress[path] : false) : false;
+
+	if(files)
+	{
+		const viewModuleSize = handlebarsContext.page.viewModuleSize || 150;
+		let images = [];
+
+		for(let i = 0, len = files.length; i < len; i++)
+		{
+			const file = files[i];
+
+			if(compatible.image(file.path))
+			{
+				file.forceSize = viewModuleSize;
+				file.sha = cache.imageSizeSha(file);
+				images.push(file);
+			}
+		}
+
+		if(readingProgress)
+		{
+			let path = readingProgress.path;
 			let sha = sha1(path);
 
-			let thumbnail = cache.returnThumbnailsImages({path: path, sha: sha}, function(data){
+			images.push({path: path, sha: sha});
 
-				addImageToDom(data.sha, data.path);
-
-			}, file);
-
-			readingProgress[mainPath].sha = sha;
-			readingProgress[mainPath].thumbnail = (thumbnail.cache) ? thumbnail.path : '';
-			readingProgress[mainPath].mainPath = mainPath;	
-			readingProgress[mainPath].pathText = returnTextPath(readingProgress[mainPath].path, mainPath, true);	
-			handlebarsContext.comicsReadingProgress = readingProgress[mainPath];
+			readingProgress.sha = sha;
 		}
-		else
+
+		if(readingProgressCurrentPath)
 		{
-			handlebarsContext.comicsReadingProgress = false;
+			let path = readingProgressCurrentPath.path;
+			let sha = sha1(path);
+
+			images.push({path: path, sha: sha});
+
+			readingProgressCurrentPath.sha = sha;
 		}
 
-		if(keepScroll > 1)
-			template.contentRight().children().html(template.load('index.content.right.'+config.view+'.html')).scrollTop(keepScroll);
-		else
-			template.contentRight().children().html(template.load('index.content.right.'+config.view+'.html'));
+		thumbnails = cache.returnThumbnailsImages(images, function(data){
 
-		//template.loadContentRight('index.content.right.'+config.view+'.html', animation, keepScroll);
-		events.events();
-		justifyViewModule();
+			addImageToDom(data.sha, data.path);
 
-	}).catch(function(error){
+		}, file);
 
-		console.error(error);
-		dom.compressedError(error);
+		let visibleItems = calculateVisibleItems(config.view, keepScroll);
 
-	});
+		for(let i = 0, len = files.length; i < len; i++)
+		{
+			let file = files[i];
+			let fileName = file.name;
+			let filePath = file.path;
+
+			let realPath = fileManager.realPath(filePath, -1);
+
+			if(compatible.image(realPath))
+			{
+				let sha = file.sha;
+
+				let thumbnail = thumbnails[file.sha];
+
+				pathFiles.push({
+					sha: sha,
+					name: translatePageName(fileName.replace(/\.[^\.]*$/, '')),
+					path: filePath,
+					mainPath: mainPath,
+					thumbnail: (thumbnail.cache) ? thumbnail.path : '',
+					folder: false,
+				});
+			}
+			else if(file.folder || file.compressed)
+			{
+				let images = await getFolderThumbnails(filePath, false, i, visibleItems.start, visibleItems.end, config.view);
+
+				pathFiles.push({
+					sha: file.sha,
+					name: metadataPathName(file),
+					path: filePath,
+					mainPath: mainPath,
+					poster: images.poster,
+					images: images.images,
+					addToQueue: images.addToQueue,
+					folder: true,
+					compressed: file.compressed,
+					progress: images.progress,
+				});
+			}
+		}
+	}
+	else
+	{
+		let images = [];
+
+		if(readingProgress)
+		{
+			let path = readingProgress.path;
+			let sha = sha1(path);
+
+			images.push({path: path, sha: sha});
+
+			readingProgress.sha = sha;
+		}
+
+		if(readingProgressCurrentPath)
+		{
+			let path = readingProgressCurrentPath.path;
+			let sha = sha1(path);
+
+			images.push({path: path, sha: sha});
+
+			readingProgressCurrentPath.sha = sha;
+		}
+
+		thumbnails = cache.returnThumbnailsImages(images, function(data){
+
+			addImageToDom(data.sha, data.path);
+
+		}, file);
+	}
+
+	if(_indexLabel?.filter)
+	{
+		pathFiles = dom.labels.filterList(pathFiles, _indexLabel.filter);
+	}
+
+	handlebarsContext.comics = pathFiles;
+
+	const processReadingProgress = function(progress) {
+
+		const sha = progress.sha;
+		const thumbnail = thumbnails[sha];
+
+		progress.sha = sha;
+		progress.thumbnail = (thumbnail.cache) ? thumbnail.path : '';
+		progress.mainPath = mainPath;
+		progress.pathText = returnTextPath(progress.path, mainPath, true, !progress.ebook);
+		progress.exists = fileManager.simpleExists(progress.path);
+
+		progress.contextMenu = {
+			path: p.dirname(progress.path),
+		};
+
+		if(!progress.exists)
+			return false;
+
+		return progress;
+
+	}
+
+	// Comic reading progress
+	if(readingProgress)
+		handlebarsContext.comicsReadingProgress = processReadingProgress(readingProgress);
+	else
+		handlebarsContext.comicsReadingProgress = false;
+
+	// Current folder reading progress
+	if(readingProgressCurrentPath && (!readingProgress || readingProgress.path !== readingProgressCurrentPath.path))
+		handlebarsContext.comicsReadingProgressCurrentPath = processReadingProgress(readingProgressCurrentPath);
+	else
+		handlebarsContext.comicsReadingProgressCurrentPath = false;
+
+	if(!pathFiles.length && fileManager.isServer(path) && serverClient.serverLastError())
+	{
+		handlebarsContext.serverLastError = serverClient.serverLastError();
+		handlebarsContext.serverHasCache = file.serverHasCache(path);
+	}
+
+	events.events();
+
+	return {files: pathFiles, readingProgress: readingProgress || {}, readingProgressCurrentPath: readingProgressCurrentPath || {}, html: template.load('index.content.right.'+config.view+'.html')};
 
 }
 
-async function reloadIndex()
+async function reloadIndex(fromSetOfflineMode = false, animation = true)
 {
-	loadIndexPage(true, indexPathA, true, true, indexMainPathA);
+	indexLabel = prevIndexLabel;
+	loadIndexPage(animation, history.path, true, true, history.mainPath, false, true, fromSetOfflineMode);
 }
+
+function reload(fromSetOfflineMode = false, animation = true)
+{
+	if(onReading)
+		reading.reload(true);
+	else if(handlebarsContext.page?.key == 'recently-opened')
+		recentlyOpened.reload(animation);
+	else
+		reloadIndex(fromSetOfflineMode, animation);
+}
+
+storage.onChangeFromOtherInstance(['comics', 'recentlySearched', 'masterFolders', 'favorites', 'labels', 'comicLabels', 'readingProgress', 'recentlyOpened', 'opdsCatalogs'], function(key) {
+
+	if(!onReading)
+	{
+		if(!document.querySelector('.dialogs .dialog, .menu-close.a, .search-bar.active'))
+		{
+			app.setThrottle('reloadOnChangeFromOtherInstance', function() {
+
+				dom.reload();
+
+			}, 100, 200);
+		}
+	}
+
+});
+
+var indexLabel = false, prevIndexLabel = {};
+
+function setIndexLabel(options)
+{
+	options.has = (options && Object.keys(options).some(key => key !== 'filter' && key !== 'has'));
+	indexLabel = options;
+}
+
+function setPrevIndexLabel(options)
+{
+	options.has = (options && Object.keys(options).some(key => key !== 'filter' && key !== 'has'));
+	prevIndexLabel = options;
+}
+
+let contentRightScrollTop = new WeakMap();
+
+function scrollTopEvent(event)
+{
+	const target = event.target;
+	const parent = target.parentElement?.parentElement;
+
+	if(!parent?.classList.contains('content-right') && !target.classList.contains('opds-browse-content'))
+		return;
+
+	contentRightScrollTop.set(target, target.scrollTop);
+}
+
+function getContentRightScrollTop(scrollElement = false, noOpds = false)
+{
+	if(!scrollElement)
+	{
+		const isOpds = fileManager.isOpds(currentPath) && !noOpds;
+
+		const contentRight = template._contentRight();
+		scrollElement = isOpds ? contentRight.querySelector('.opds-browse-content') : contentRight.firstElementChild;
+	}
+
+	return scrollElement ? contentRightScrollTop.get(scrollElement) || 0 : 0;
+}
+
+app.event(document, 'scroll', scrollTopEvent, {
+	capture: true,
+	passive: true,
+});
 
 var currentPath = false, currentPathScrollTop = [];
 
-async function loadIndexPage(animation = true, path = false, content = false, keepScroll = false, mainPath = false, fromGoBack = false)
+function setCurrentPathScrollTop(path = false)
 {
-	selectMenuItem('library');
+	const scrollTop = getContentRightScrollTop();
+	currentPathScrollTop[currentPath === false ? 0 : currentPath] = scrollTop;
 
-	onReading = false;
-
-	reading.hideContent();
-
-	generateAppMenu();
-
-	currentPathScrollTop[currentPath === false ? 0 : currentPath] = template.contentRight().children().scrollTop();
-
-	for(let _path in currentPathScrollTop)
+	if(path !== false)
 	{
-		if(_path != 0 && !new RegExp('^'+pregQuote(_path)).test(path))
-			delete currentPathScrollTop[_path];
+		for(let _path in currentPathScrollTop)
+		{
+			if(_path != 0 && !new RegExp('^'+pregQuote(_path)).test(path))
+				delete currentPathScrollTop[_path];
+		}
 	}
 
-	if(currentPathScrollTop[path === false ? 0 : path])
-		keepScroll = currentPathScrollTop[path === false ? 0 : path];
-
 	currentPath = path;
+}
 
-	if(!path)
+async function loadIndexPage(animation = true, path = false, content = false, keepScroll = false, mainPath = false, fromGoBack = false, notAutomaticBrowsing = false, fromSetOfflineMode = false, fromGoForwards = false)
+{
+	onReading = _onReading = false;
+
+	fileManager.revokeAllObjectURL();
+	reading.render.clean(true);
+	reading.render.revokeAllObjectURL();
+	workers.clean('convertImage');
+
+	scroll.reset();
+	reading.music.destroy();
+
+	setWindowTitle();
+
+	const isOpds = fileManager.isOpds(path);
+	setCurrentPathScrollTop(path);
+
+	const pathScrollTopKey = path === false ? 0 : path;
+
+	if(currentPathScrollTop[pathScrollTopKey])
+		keepScroll = currentPathScrollTop[pathScrollTopKey];
+
+	const _indexLabel = prevIndexLabel = (indexLabel || {});
+	indexLabel = false;
+
+	handlebarsContext.serverLastError = false;
+
+	let contentRightIndex = template.contentRightIndex();
+
+	if(_indexLabel.opds || isOpds)
 	{
-		indexPathControl(false);
+		if(!template._contentLeft().querySelector('.menu-list'))
+			dom.loadIndexContentLeft(animation);
+
+		opds.loadOpdsCatalogs();
+		
+		if(!path)
+		{
+			dom.fromLibrary(true);
+			dom.indexPathControl(false);
+
+			generateAppMenu();
+
+			dom.setCurrentPageVars('index', _indexLabel);
+			dom.floatingActionButton(false);
+
+			handlebarsContext.headerTitle = false;
+			handlebarsContext.headerTitlePath = false;
+
+			// OPDS
+			await opds.home();
+		}
+		else
+		{
+			if(!fromGoBack && !opds.isPublication(path))
+				indexPathControl(path, mainPath);
+
+			generateAppMenu();
+
+			dom.setCurrentPageVars('browsing', {filter: _indexLabel?.filter || {}});
+			dom.headerPath(path, mainPath);
+			dom.floatingActionButton(false);
+
+			// OPDS
+			await opds.browse(path, mainPath, keepScroll);
+		}
+	}
+	else if(!path)
+	{
+		dom.fromLibrary(true);
+		dom.indexPathControl(false);
+
+		generateAppMenu();
+
+		if(!fromSetOfflineMode)
+			fileManager.setServerInOfflineMode(false);
+
+		dom.setCurrentPageVars('index', _indexLabel);
 
 		let sort = config.sortIndex;
 		let sortInvert = config.sortInvertIndex;
-		let foldersFirst = config.foldersFirstIndex;
+		let continueReading = config.continueReadingIndex;
+		let recentlyAdded = config.recentlyAddedIndex;
+
+		let sortAndView = false;
+
+		if(_indexLabel.has)
+		{
+			let labelKey = '';
+
+			if(_indexLabel.favorites)
+				labelKey = 'favorites';
+			else if(_indexLabel.opds)
+				labelKey = 'opds';
+			else if(_indexLabel.masterFolder)
+				labelKey = 'masterFolder-'+_indexLabel.index;
+			else if(_indexLabel.server)
+				labelKey = 'server-'+_indexLabel.index;
+			else if(_indexLabel.label)
+				labelKey = 'label-'+_indexLabel.index;
+
+			sortAndView = config.sortAndView[labelKey] || defaultSortAndView;
+
+			sort = sortAndView.sort;
+			sortInvert = sortAndView.sortInvert;
+			continueReading = sortAndView.continueReading;
+			recentlyAdded = sortAndView.recentlyAdded;
+		}
 
 		let order = '';
 		let orderKey = 'name';
@@ -634,13 +777,17 @@ async function loadIndexPage(animation = true, path = false, content = false, ke
 		{
 			order = 'simple-numeric';
 		}
+		else if(sort === 'shuffle')
+		{
+			order = 'shuffle';
+		}
 		else if(sort == 'last-add')
 		{
 			order = 'real-numeric';
 			orderKey = 'added';
 			sortInvert = !sortInvert;
 		}
-		else
+		else // last-reading
 		{
 			order = 'real-numeric';
 			orderKey = 'readingProgress';
@@ -648,112 +795,621 @@ async function loadIndexPage(animation = true, path = false, content = false, ke
 			sortInvert = !sortInvert;
 		}
 
-		var comicsStorage = storage.get('comics');
-		var comics = [];
+		let comics = [];
+		let comicPaths = new Set();
 
-		if(!isEmpty(comicsStorage))
+		let ignore = fileManager.ignoreFilesRegex();
+
+		// Get comics in master folders
+		let masterFolders = relative.get('masterFolders');
+
+		if(!isEmpty(masterFolders))
 		{
-			for(let key in comicsStorage)
+			for(let path of masterFolders)
 			{
-				if(fs.existsSync(comicsStorage[key].path))
+				if(fs.existsSync(path) && (!_indexLabel.masterFolder || _indexLabel.masterFolder == path) && !_indexLabel.server)
 				{
-					comics.push(comicsStorage[key]);
-				}
-				else
-				{
-					//console.log(comicsStorage[key]);
+					let file = fileManager.file(path);
+					let files = await file.readDir();
+					file.destroy();
+
+					for(let i = 0, len = files.length; i < len; i++)
+					{
+						let folder = files[i];
+
+						if(ignore && ignore.test(folder.name))
+							continue;
+
+						if((folder.folder || folder.compressed) && !comicPaths.has(folder.path))
+						{
+							comics.push({
+								name: metadataPathName(folder),
+								path: folder.path,
+								added: Math.round(fs.statSync(folder.path).ctimeMs / 1000),
+								folder: true,
+								compressed: folder.compressed,
+								fromMasterFolder: true,
+							});
+
+							comicPaths.add(folder.path);
+						}
+					}
 				}
 			}
+		}
 
-			for(let key in comics)
+		// Get server file lists
+		let servers = storage.get('servers');
+
+		if(!isEmpty(servers))
+		{
+			if(_indexLabel.server)
 			{
-				let images = await getFolderThumbnails(comics[key].path);
+				const root = history.root();
+				selectMenuItem(dom.labels.menuItemSelector(root.indexLabel?.has ? root.indexLabel : _indexLabel));
 
-				comics[key].sha = sha1(comics[key].path);
-				comics[key].poster = images.poster;
-				comics[key].images = images.images;
-				comics[key].mainPath = config.showFullPathLibrary ? p.parse(comics[key].path).root : comics[key].path;
+				handlebarsContext.animationDelay = 0.2;
+				template.loadContentRight('index.content.right.loading.html', animation, keepScroll);
+				handlebarsContext.animationDelay = false;
+
+				contentRightIndex = template.contentRightIndex();
 			}
 
-			comics.sort(function (a, b) {
+			for(let i = 0, len2 = servers.length; i < len2; i++)
+			{
+				const server = servers[i];
+
+				if((((server.showOnLibrary || _indexLabel.favorites || _indexLabel.label) && !_indexLabel.server) || _indexLabel.server == server.path) && !_indexLabel.masterFolder)
+				{
+					const file = fileManager.file(server.path);
+					if(!_indexLabel.server) file.updateConfig({cacheServer: true});
+					let files = await file.readServer();
+
+					if(server.filesInSubfolders && !_indexLabel.server)
+					{
+						let _files = [];
+
+						for(let j = 0, len = files.length; j < len; j++)
+						{
+							const folder = files[j];
+
+							if(folder.folder || folder.compressed)
+							{
+								const _file = fileManager.file(folder.path);
+								_file.updateConfig({cacheServer: true});
+								_files = _files.concat(await _file.readServer());
+							}
+						}
+
+						if(_indexLabel.has)
+							_files = _files.concat(files);
+
+						files = _files;
+					}
+
+					const len = files.length;
+
+					for(let j = 0; j < len; j++)
+					{
+						const folder = files[j];
+
+						if(ignore && ignore.test(folder.name))
+							continue;
+
+						if((folder.folder || folder.compressed) && !comicPaths.has(folder.path))
+						{
+							comics.push({
+								name: metadataPathName(folder),
+								path: folder.path,
+								added: Math.round(folder.mtime / 1000),
+								folder: true,
+								compressed: folder.compressed,
+								fromMasterFolder: true,
+							});
+
+							comicPaths.add(folder.path);
+						}
+					}
+
+					if(!len && _indexLabel.server && serverClient.serverLastError())
+					{
+						handlebarsContext.serverLastError = serverClient.serverLastError();
+						handlebarsContext.serverHasCache = file.serverHasCache(server.path);
+					}
+
+					file.destroy();
+				}
+			}
+		}
+
+		// Get comics in library
+		let comicsStorage = relative.get('comics');
+
+		if(!isEmpty(comicsStorage) && !_indexLabel.masterFolder && !_indexLabel.server)
+		{
+			for(const comic of comicsStorage)
+			{
+				const path = comic.path;
+
+				if(!comicPaths.has(path) && fs.existsSync(path))
+				{
+					comic.name = metadataPathName(comic);
+					comics.push(comic);
+
+					comicPaths.add(path);
+				}
+			}
+		}
+
+		// Get comics in favorite/labels that are not in master folders, servers and library, like comics in subfolders
+		if(!_indexLabel?.filter?.onlyRoot && (_indexLabel.favorites || _indexLabel.label))
+		{
+			const labelsPath = [];
+
+			// Favorites
+			const favorites = relative.get('favorites');
+
+			for(let path in favorites)
+			{
+				labelsPath.push(path);
+			}
+
+			// Labels
+			const comicLabels = relative.get('comicLabels');
+
+			for(let path in comicLabels)
+			{
+				labelsPath.push(path);
+			}
+
+			// Process
+			for(const path of labelsPath)
+			{
+				if(!comicPaths.has(path) && fileManager.simpleExists(path))
+				{
+					const isServer = fileManager.isServer(path);
+					const firstCompressedFile = fileManager.firstCompressedFile(path, 0, false);
+
+					comics.push({
+						name: metadataPathName({path: path, name: p.basename(path)}),
+						path: path,
+						added: isServer ? 0 : Math.round(fs.statSync(firstCompressedFile).ctimeMs / 1000),
+						folder: true,
+						compressed: compatible.compressed(path),
+						fromMasterFolder: true,
+					});
+
+					comicPaths.add(path);
+				}
+			}
+		}
+
+		cache.cleanQueue();
+		cache.stopQueue();
+		threads.stop('folderThumbnails');
+
+		let len = comics.length;
+
+		if(len && _indexLabel.has)
+		{
+			if(_indexLabel.favorites)
+			{
+				let favorites = relative.get('favorites');
+				let _comics = [];
+
+				for(let i = 0; i < len; i++)
+				{
+					if(favorites[comics[i].path])
+						_comics.push(comics[i]);
+				}
+
+				comics = _comics;
+				len = comics.length;
+			}
+			else if(_indexLabel.label)
+			{
+				let labels = storage.get('labels') || [];
+				let label = labels[_indexLabel.index] || false;
+
+				let comicLabels = relative.get('comicLabels');
+				let _comics = [];
+
+				for(let i = 0; i < len; i++)
+				{
+					if(comicLabels[comics[i].path] && comicLabels[comics[i].path].includes(label))
+						_comics.push(comics[i]);
+				}
+
+				comics = _comics;
+				len = comics.length;
+			}
+		}
+
+		if(_indexLabel?.filter)
+		{
+			comics = dom.labels.filterList(comics, _indexLabel.filter);
+			len = comics.length;
+		}
+
+		const view = (sortAndView ? sortAndView.view : config.viewIndex);
+
+		if(len)
+		{
+			// Comic reading progress
+			let readingProgress = relative.get('readingProgress');
+
+			for(let i = 0; i < len; i++)
+			{
+				comics[i].readingProgress = readingProgress[comics[i].path] || {lastReading: 0};
+			}
+
+			comics.sort(function(a, b) {
 				return (sortInvert) ? -(orderBy(a, b, order, orderKey, orderKey2)) : orderBy(a, b, order, orderKey, orderKey2);
 			});
+
+			let visibleItems = calculateVisibleItems(view, keepScroll);
+
+			for(let i = 0; i < len; i++)
+			{
+				let images = await getFolderThumbnails(comics[i].path, false, i, visibleItems.start, visibleItems.end, view);
+
+				comics[i].sha = sha1(comics[i].path);
+				comics[i].poster = images.poster;
+				comics[i].images = images.images;
+				comics[i].addToQueue = images.addToQueue;
+				comics[i].mainPath = comics[i].path;
+				comics[i].progress = images.progress;
+			}
 		}
+
+		// Avoid continue if another loadIndexPage has been run
+		if(contentRightIndex != template.contentRightIndex()) return;
+
+		dom.boxes.reset();
+		if(sort != 'last-reading' && continueReading) await dom.boxes.continueReading(comics);
+		if(sort != 'last-add' && recentlyAdded) await dom.boxes.recentlyAdded(comics);
 
 		handlebarsContext.comics = comics;
 		handlebarsContext.comicsIndex = true;
-		handlebarsContext.comicsIndexVar = 'true';
+		handlebarsContext.sortAndView = sortAndView || false;
 		handlebarsContext.comicsReadingProgress = false;
+		handlebarsContext.comicsReadingProgressCurrentPath = false;
 
-		template.loadContentRight('index.content.right.'+config.viewIndex+'.html', animation, keepScroll);
+		template.loadContentRight('index.content.right.'+view+'.html', animation, keepScroll);
+
+		cache.resumeQueue();
+		threads.resume('folderThumbnails');
 
 		handlebarsContext.headerTitle = false;
 		handlebarsContext.headerTitlePath = false;
-		template.loadHeader('index.header.html', animation);
+		dom.loadIndexHeader(_indexLabel.has ? _indexLabel.name : false, animation);
+
+		if(!template._contentLeft().querySelector('.menu-list'))
+			dom.loadIndexContentLeft(animation);
 
 		if(!content)
 		{
-			if(template.contentLeft('.menu-list').length === 0) template.loadContentLeft('index.content.left.html', animation);
 			template.loadGlobalElement('index.elements.menus.html', 'menus');
 			floatingActionButton(true, 'dom.addComicButtons();');
 		}
+		
+		if(_indexLabel.has)
+			floatingActionButton(false);
 
 		events.events();
 
 	}
 	else
 	{
+		const files = await readFilesIndexPage(path, mainPath, fromGoBack, notAutomaticBrowsing, fromGoForwards);
+
+		path = files.path;
+		mainPath = files.mainPath;
+
+		if(files.open)
+		{
+			template.loadContentRight('index.content.right.loading.html', animation, keepScroll);
+			dom.openComic(animation, path, mainPath, false, false, false, true);
+
+			return;
+		}
+
 		if(!fromGoBack)
 			indexPathControl(path, mainPath);
 
+		dom.boxes.reset();
+		handlebarsContext.comics = [];
 		handlebarsContext.comicsIndex = false;
-		handlebarsContext.comicsIndexVar = 'false';
+		handlebarsContext.sortAndView = false;
+		handlebarsContext.comicsDeep2 = path.replace(new RegExp('^\s*'+pregQuote(mainPathR)), '').split(p.sep).length >= 2 ? true : false;
+		dom.setCurrentPageVars('browsing', {filter: _indexLabel?.filter || {}});
+
+		if(handlebarsContext.comicsDeep2)
+			showIfHasPrevOrNext(path, mainPath);
 
 		headerPath(path, mainPath);
-		template.loadHeader('index.header.html', animation);
-		template.loadContentRight('index.content.right.loading.html', animation, keepScroll);
+
+		dom.loadIndexHeader(false, animation);
+
+		let ST = setTimeout(function(){
+
+			if(!template._contentLeft().querySelector('.menu-list'))
+				dom.loadIndexContentLeft(animation);
+
+			template.loadContentRight('index.content.right.loading.html', animation, keepScroll);
+			ST = false;
+
+		}, 50);
+
+		contentRightIndex = template.contentRightIndex();
 
 		if(!content)
 		{
-			if(readingActive)
-			{
-				template.loadContentLeft('index.content.left.html', animation);
-			}
-
 			template.loadGlobalElement('index.elements.menus.html', 'menus');
 			floatingActionButton(false);
 		}
 
 		cache.cleanQueue();
+		cache.stopQueue();
+		threads.stop('folderThumbnails');
 
-		let file = fileManager.file(path);
-		await loadFilesIndexPage(file, animation, path, keepScroll, mainPath);
+		// Avoid continue if another loadIndexPage has been run
+		if(contentRightIndex != template.contentRightIndex())
+			return;
+
+		const file = fileManager.file(path);
+		const indexData = await loadFilesIndexPage(files.files, file, animation, path, keepScroll, mainPath, _indexLabel);
+		file.destroy();
+
+		let contentRightScroll = template.contentRight().children()
+
+		if(ST === false)
+		{
+			if(!files.error)
+				contentRightScroll.html(indexData.html);
+		}
+		else
+		{
+			clearTimeout(ST);
+
+			if(!files.error)
+			{
+				if(!template._contentLeft().querySelector('.menu-list'))
+					dom.loadIndexContentLeft(animation);
+				
+				template.changeContentRight(indexData.html, animation, keepScroll);
+			}
+		}
+
+		if(keepScroll > 1)
+			contentRightScroll.scrollTop(keepScroll);
+
+		cache.resumeQueue();
+		threads.resume('folderThumbnails');
+
+		generateAppMenu();
 	}
 
 	if(readingActive)
 		readingActive = false;
 
-	justifyViewModule();
+	const root = history.root();
 
-	shortcuts.register('browse');
+	if(!_indexLabel.has && !root.indexLabel?.has)
+	{
+		if(!root.recentlyOpened)
+			selectMenuItem('library');
+		else
+			selectMenuItem('recently-opened');
+	}
+	else
+	{
+		selectMenuItem(dom.labels.menuItemSelector(root.indexLabel.has ? root.indexLabel : _indexLabel));
+	}
+
+	reading.hideContent();
+
+	shortcuts.register(isOpds || _indexLabel.opds ? 'opds' : 'browse');
 	gamepad.updateBrowsableItems(path ? sha1(path) : 'library');
-
-	$(window).off('resize').on('resize', function(){
-		justifyViewModule();
-	});
-
+	reading.discord.update();
+	scroll.event();
+	tabs.update();
+	events.eventHover();
 }
 
-function compressedError(error)
+function loadIndexContentLeft(animation, onlyIfIsNotLoaded = false)
 {
-	//console.log(error);
+	if(onlyIfIsNotLoaded && template._contentLeft().querySelector('.menu-item-library'))
+		return;
 
-	electronRemote.dialog.showMessageBox({
-		type: 'error',
-		title: language.error.uncompress.title,
-		message: language.error.uncompress.message,
-		detail: error.detail || error.message,
+	// Master folders
+	let masterFolders = relative.get('masterFolders');
+
+	masterFolders = masterFolders.map(function(path, i) {
+
+		path = path;
+
+		return {
+			id: 'master-folder-'+i,
+			key: i,
+			name: p.basename(path),
+			path: path,
+		};
+
 	});
+
+	masterFolders.sort(function(a, b){
+
+		if(a.name === b.name)
+			return 0;
+
+		return a.name > b.name ? 1 : -1;
+
+	});
+
+	handlebarsContext.masterFolders = masterFolders;
+
+	// Labels
+	let labels = storage.get('labels');
+
+	let _labels = [];
+
+	for(let i = 0, len = labels.length; i < len; i++)
+	{
+		_labels.push({
+			id: 'label-'+i,
+			key: i,
+			name: labels[i],
+		});
+	}
+
+	_labels.sort(function(a, b){
+
+		if(a.name === b.name)
+			return 0;
+
+		return a.name > b.name ? 1 : -1;
+
+	});
+
+	handlebarsContext.labels = _labels;
+
+	// Servers
+	let servers = storage.get('servers');
+
+	let _servers = [];
+
+	for(let i = 0, len = servers.length; i < len; i++)
+	{
+		_servers.push({
+			id: 'server-'+i,
+			key: i,
+			name: servers[i].name,
+			path: servers[i].path,
+		});
+	}
+
+	_servers.sort(function(a, b){
+
+		if(a.name === b.name)
+			return 0;
+
+		return a.name > b.name ? 1 : -1;
+
+	});
+
+	handlebarsContext.servers = _servers;
+
+	// OPDS Catalogs
+	const opdsCatalogs = storage.get('opdsCatalogs');
+	const opdsCatalogsLeft = [];
+
+	for(let i = 0, len = opdsCatalogs.length; i < len; i++)
+	{
+		opdsCatalogsLeft.push({
+			id: 'opds-'+i,
+			key: i,
+			title: opdsCatalogs[i].title,
+			url: opdsCatalogs[i].url,
+			showOnLeft: opdsCatalogs[i].showOnLeft,
+		});
+	}
+
+	opdsCatalogsLeft.sort(function(a, b){
+
+		if(a.name === b.name)
+			return 0;
+
+		return a.name > b.name ? 1 : -1;
+
+	});
+
+	handlebarsContext.opdsCatalogsLeft = opdsCatalogsLeft;
+
+	// Is from
+	handlebarsContext.isFrom = currentSelectMenuItem;
+
+	// Labels expanded state
+	handlebarsContext.labelsExpanded = config.labelsExpanded;
+
+	template.loadContentLeft('index.content.left.html', animation);
+
+	setTimeout(function() {
+
+		// Show hover text in menus that are long
+		const menus = template._contentLeft().querySelectorAll('.menu-item');
+
+		for(const menu of menus)
+		{
+			if(menu.scrollWidth > menu.clientWidth)
+				menu.classList.add('hover-text');
+			else
+				menu.removeAttribute('hover-text');
+		}
+
+		events.eventHover();
+
+	}, 100);
+
+	handlebarsContext.isFrom = false;
+}
+
+function loadIndexHeader(title = false, animation = true)
+{
+	handlebarsContext.indexHeaderTitle = title || language.global.library;
+	template.loadHeader('index.header.html', animation);
+}
+
+function indexHeader(title = false)
+{
+	handlebarsContext.indexHeaderTitle = title || language.global.library;
+	return template.load('index.header.html');
+}
+
+function continueReadingError()
+{
+	events.snackbar({
+		key: 'continueReadingError',
+		text: language.comics.continueReadingNotExists,
+		duration: 6,
+		buttons: [
+			{
+				text: language.buttons.dismiss,
+				function: 'events.closeSnackbar();',
+			},
+		],
+	});
+}
+
+function compressedError(error, showInPage = true, snackbarKey = '', path = false)
+{
+	if(showInPage)
+	{
+		handlebarsContext.compressedError = error ? (error.detail || error.message) : '';
+		handlebarsContext.contentRightMessage = template.load('content.right.message.compressed.error.html');
+		template._contentRight().firstElementChild.innerHTML = template.load('content.right.message.html');
+	}
+	else
+	{
+		const message = language.error.uncompress.title+(error ? ': '+(error.detail || error.message) : '');
+
+		events.snackbar({
+			key: 'compressedError'+snackbarKey,
+			text: message,
+			duration: 6,
+			update: true,
+			updateShown: true,
+			buttons: [
+				{
+					text: language.buttons.dismiss,
+					function: 'events.closeSnackbar();',
+				},
+			],
+		});
+
+		if(path)
+			console.warn('%cError when unzipping %c'+path+'%c: '+message, '', 'color: #cc0000;', '');
+	}
 }
 
 function addSepToEnd(path)
@@ -764,70 +1420,167 @@ function addSepToEnd(path)
 	return path;
 }
 
-function returnTextPath(path, mainPath, image = false)
+var mainPathR = false;
+
+function returnTextPath(path, mainPath, image = false, extension = true)
 {
 	mainPathR = addSepToEnd(p.dirname(mainPath));
 
-	var files = path.replace(new RegExp('^\s*'+pregQuote(mainPathR)), '').split(p.sep);
+	let files = path.replace(new RegExp('^\s*'+pregQuote(mainPathR)), '').split(p.sep);
+	path = [];
 
-	var path = [];
+	let _path = mainPathR;
 
-	for(let index in files)
+	for(let i = 0, len = files.length; i < len; i++)
 	{
-		path.push(image ? htmlEntities(files[index]) : files[index]);
+		_path = p.normalize(p.join(_path, files[i]));
+		files[i] = metadataPathName({path: _path, name: files[i]}, true);
+
+		if(!extension && i == len - 1)
+			files[i] = p.parse(files[i]).name;
+
+		path.push(translatePageName(image ? htmlEntities(files[i]) : files[i]));
 	}
 
 	return path.join(image ? '<i class="material-icon navegation">chevron_right</i>' : ' / '); 
 }
 
-function headerPath(path, mainPath)
+var isFromLibrary = true;
+
+function fromLibrary(value)
 {
-	mainPathR = addSepToEnd(p.dirname(mainPath));
+	isFromLibrary = value;
+}
 
-	var files = path.replace(new RegExp('^\s*'+pregQuote(mainPathR)), '').split(p.sep);
+function headerPath(path, mainPath, windowTitle = false)
+{
+	let _mainPath = mainPath;
 
-	var path = [];
+	if((config.showFullPathLibrary && isFromLibrary) || (config.showFullPathOpened && !isFromLibrary))
+		_mainPath = p.parse(path).root;
 
-	var pathJoin = mainPathR;
+	mainPathR = addSepToEnd(p.dirname(_mainPath));
 
-	for(let index in files)
+	let files = path.replace(new RegExp('^\s*'+pregQuote(mainPathR)), '').split(p.sep);
+	path = [];
+
+	let _path = mainPathR;
+
+	for(let i = 0, len = files.length; i < len; i++)
 	{
-		pathJoin = p.join(pathJoin, files[index]);
+		if(!files[i] && i === len - 1)
+			continue;
 
-		path.push({name: files[index], path: p.normalize(pathJoin), mainPath: mainPath});
+		_path = p.normalize(p.join(_path, files[i]));
+		path.push({name: metadataPathName({path: _path, name: files[i]}, true), path: _path, mainPath: mainPath});
 	}
 
-	if(path.length > 0)
-		path[path.length - 1].last = true;
+	const root = history.root();
+
+	if(config.showLibraryPath && (isFromLibrary || root.indexLabel?.has || root.recentlyOpened))
+		path.unshift({name: labels.getName(root.indexLabel, root.recentlyOpened), path: '', mainPath: ''});
+
+	let len = path.length;
+
+	if(len > 0)
+		path[len - 1].last = true;
+
+	if(windowTitle && len > 0)
+	{
+		let firstCompressedFile = fileManager.firstCompressedFile(_path);
+		setWindowTitle(dom.metadataPathName({path: firstCompressedFile, name: p.basename(firstCompressedFile)}, true));
+	}
 
 	handlebarsContext.headerTitlePath = path;
 }
 
 async function nextComic(path, mainPath)
 {
-	let file = fileManager.file(mainPath);
+	let file = fileManager.file(mainPath, {cacheServer: true, subtask: true});
 	let image = await file.images(1, path);
+	file.destroy();
 
 	return image && image.path ? image.path : false;
 }
 
 async function previousComic(path, mainPath)
 {
-	let file = fileManager.file(mainPath);
+	let file = fileManager.file(mainPath, {cacheServer: true, subtask: true});
 	let image = await file.images(-1, path);
+	file.destroy();
 
 	return image && image.path ? image.path : false;
 }
 
-async function _getFolderThumbnails(file, images, _images, path, folderSha, isAsync = false)
+async function goNextComic(path, mainPath)
 {
-	let shaIndex = {};
+	let _nextComic = await nextComic(history.path, history.mainPath);
 
+	if(_nextComic)
+	{
+		dom.loadIndexPage(true, p.dirname(_nextComic), false, false, history.mainPath, false, true);
+	}
+}
+
+async function goPrevComic(path, mainPath)
+{
+	let prevComic = await previousComic(history.path, history.mainPath);
+
+	if(prevComic)
+	{
+		dom.loadIndexPage(true, p.dirname(prevComic), false, false, history.mainPath, false, true);
+	}
+}
+
+async function showIfHasPrevOrNext(path, mainPath)
+{
+	let _nextComic = await nextComic(path, mainPath);
+	let prevComic = await previousComic(path, mainPath);
+
+	let barHeader = template._barHeader();
+
+	let buttonNext = barHeader.querySelector('.button-next-comic');
+	let buttonPrev = barHeader.querySelector('.button-prev-comic');
+
+	if(buttonNext)
+	{
+		if(_nextComic)
+			buttonNext.classList.remove('disable-pointer');
+	}
+
+	if(buttonPrev)
+	{
+		if(prevComic)
+			buttonPrev.classList.remove('disable-pointer');
+	}
+}
+
+function pickAtRandom()
+{
+	const contentRight = template._contentRight();
+	const comics = contentRight.querySelectorAll('div:not(.box-content) > .content-view-module > div, .content-view-list .medium-list');
+
+	const random = Math.floor(Math.random() * comics.length);
+	const item = comics[random];
+
+	const onclick = item.getAttribute('onclick');
+
+	if(onclick)
+		eval(onclick);
+}
+
+async function _getFolderThumbnails(file, images, _images, path, folderSha, isAsync = false, forceSize = false)
+{
+	const viewModuleSize = forceSize ? forceSize : (handlebarsContext.page.viewModuleSize || 150);
+
+	let shaIndex = {};
 	let poster = false;
 
-	if(Array.isArray(_images))
+	const isArray = Array.isArray(_images);
+
+	if(isArray && (!config.useTheFirstImageAsPosterInParentFolders || _images.length === 0)) // 4 Images
 	{
-		if(isAsync) dom.queryAll('.sha-'+folderSha+' .folder-poster').remove();
+		if(isAsync) dom.queryAll('.sha-'+folderSha+' .folder-poster, .sha-'+folderSha+':not(.medium-list) .progress-pages').remove();
 
 		for(let i = 0, len = _images.length; i < len; i++)
 		{
@@ -853,22 +1606,31 @@ async function _getFolderThumbnails(file, images, _images, path, folderSha, isAs
 
 				if(isAsync)
 				{
-					addImageToDom(imageCache.sha, imageCache.path);
-					addImageToDom(folderSha+'-'+i, imageCache.path);
+					addImageToDom(imageCache.sha, imageCache.path, false);
+					addImageToDom(folderSha+'-'+i, imageCache.path, false);
 				}
 			}
 		}
 	}
-	else
+	else // Poster
 	{
+		if(isArray)
+			_images = _images[0];
+
 		if(isAsync) dom.queryAll('.sha-'+folderSha+' .folder-images').remove();
 
-		poster = cache.returnThumbnailsImages({path: _images.path, sha: _images.sha}, function(data){
+		poster = cache.returnThumbnailsImages({path: _images.path, sha: _images.sha, type: 'poster', forceSize: viewModuleSize}, function(data){
 
 			addImageToDom(data.sha, data.path);
 			addImageToDom(folderSha+'-0', data.path);
 
 		}, file);
+
+		if(isAsync && poster.path)
+		{
+			addImageToDom(poster.sha, poster.path, false);
+			addImageToDom(folderSha+'-0', poster.path, false);
+		}
 
 		poster.sha = folderSha+'-0';
 
@@ -878,9 +1640,10 @@ async function _getFolderThumbnails(file, images, _images, path, folderSha, isAs
 	return {poster: poster, images: images};
 }
 
-async function getFolderThumbnails(path)
+async function getFolderThumbnails(path, forceSize = false, index = 0, start = 0, end = 99999, view = false)
 {
-	let folderSha = sha1(path);
+	const getProgress = handlebarsContext.page.fadeCompleted || handlebarsContext.page.progressBar || handlebarsContext.page.progressPages || handlebarsContext.page.progressPercent;
+	const folderSha = sha1(path+(forceSize ? '?size='+forceSize : ''));
 
 	let poster = {cache: false, path: '', sha: folderSha+'-0'};
 
@@ -890,116 +1653,270 @@ async function getFolderThumbnails(path)
 		{cache: false, path: '', sha: folderSha+'-2'},
 		{cache: false, path: '', sha: folderSha+'-3'},
 	];
+
+	let progress = false;
+
+	let addToQueue = false;
+	let addToQueueProgress = false;
 	
-	try
+	if(index >= start && index <= end)
 	{
-		let file = fileManager.file(path);
-		file.updateConfig({cacheOnly: true});
-		let _images = await file.images(4, false, true);
-
-		_images = await _getFolderThumbnails(file, images, _images, path, folderSha);
-
-		poster = _images.poster;
-		images = _images.poster ? false : _images.images;
-	}
-	catch(error)
-	{
-		if(error.message && error.message === 'notCacheOnly')
+		if(view !== 'list')
 		{
-			queue.add('folderThumbnails', async function(path, folderSha) {
+			try
+			{
+				let file = fileManager.file(path, {fromThumbnailsGeneration: true, subtask: true});
+				file.updateConfig({cacheOnly: true});
 
-				let file = fileManager.file(path);
-				let _images = await file.images(4, false, true);
+				let _images = cache.folderThumbnails.get(path, forceSize);
 
-				_getFolderThumbnails(file, images, _images, path, folderSha, true);
+				if(_images)
+				{
+					_images = _images.poster ? _images.poster : _images.images;
+					addToQueue = 1;
+				}
+				else
+				{
+					_images = await file.images(4, false, true);
+					cache.folderThumbnails.set(path, _images);
+				}
 
-			}, path, folderSha);
+				_images = await _getFolderThumbnails(file, images, _images, path, folderSha, false, forceSize);
+
+				file.destroy();
+
+				poster = _images.poster;
+				images = _images.poster ? false : _images.images;
+			}
+			catch(error)
+			{
+				if(error.message && /notCacheOnly/.test(error.message))
+				{
+					addToQueue = 1;
+				}
+				else
+				{
+					console.error(error);
+
+					dom.compressedError(error, false);
+					fileManager.requestFileAccess.check(path, error);
+				}
+			}
 		}
 		else
 		{
-			console.error(error);
-			dom.compressedError(error);
+			addToQueue = 2;
+		}
+
+		try
+		{
+			if(getProgress)
+				progress = await reading.progress.get(path, true, true);
+		}
+		catch(error)
+		{
+			if(error.message && /notCacheOnly/.test(error.message))
+				addToQueueProgress = 1;
 		}
 	}
+	else
+	{
+		addToQueue = 2;
+		addToQueueProgress = 2;
+	}
 
-	return {poster: poster, images: images};
+	if(forceSize !== null || addToQueue || addToQueueProgress)
+	{
+		scroll.setStatus(folderSha, {
+			index,
+			path,
+			forceSize,
+			thumbnails: addToQueue,
+			progress: addToQueueProgress,
+			folderSha,
+		});
+	}
+
+	return {poster: poster, images: images, addToQueue: addToQueue, progress: progress};
 }
 
-var indexPathControlA = [], indexPathA = false, indexMainPathA = false;
-
-function indexPathControlGoBack()
+function calculateVisibleItems(view, scrollTop = false)
 {
-	if(indexPathControlA.length == 1)
+	const element = template._contentRight().firstElementChild;
+	let rect = element.getBoundingClientRect();
+
+	if(rect.width == 0 || rect.height == 0)
+		rect = {width: window.innerWidth, height: window.innerHeight};
+
+	scrollTop = scrollTop || 0; // element.scrollTop;
+
+	let start = 0;
+	let end = 100;
+
+	if(view == 'module')
 	{
+		const viewModuleSize = handlebarsContext.page.viewModuleSize || 150;
+
+		const sizes = {
+			100: {
+				width: 116,
+				height: 230,
+			},
+			150: {
+				width: 166,
+				height: 305,
+			},
+			200: {
+				width: 216,
+				height: 380,
+			},
+			250: {
+				width: 266,
+				height: 455,
+			},
+			300: {
+				width: 316,
+				height: 530,
+			},
+		};
+
+		const size = sizes[viewModuleSize];
+
+		const itemsPerLine =  Math.floor((rect.width - 16) / size.width);
+		const lines = Math.ceil(rect.height / size.height);
+		const line = Math.floor(scrollTop / size.height);
+
+		start = scrollTop ? (line - 1) * itemsPerLine : 0; // 1 margin line
+		end = (line + lines + 1) * itemsPerLine; // 1 margin line
+	}
+	else
+	{
+		start = scrollTop ? Math.floor(scrollTop / 72) - 4 : 0; // 4 margin items
+		end = Math.floor((scrollTop + rect.height) / 72) + 4; // 4 margin items
+	}
+
+	return {start: start, end: end};
+}
+
+function calculateItemsDistribution(view, scrollTop = false)
+{
+	const element = template._contentRight().firstElementChild;
+	let rect = element.getBoundingClientRect();
+
+	if(rect.width == 0 || rect.height == 0)
+		rect = {width: window.innerWidth, height: window.innerHeight, top: rect.top, left: rect.left};
+
+	let width = rect.width;
+	let height = 72;
+	let itemsPerLine = 1;
+
+	if(view == 'module')
+	{
+		const viewModuleSize = handlebarsContext.page.viewModuleSize || 150;
+
+		const sizes = {
+			100: {width: 116, height: 230},
+			150: {width: 166, height: 305},
+			200: {width: 216, height: 380},
+			250: {width: 266, height: 455},
+			300: {width: 316, height: 530},
+		};
+
+		const size = sizes[viewModuleSize];
+		width = size.width;
+		height = size.height;
+		itemsPerLine = Math.floor((rect.width - 16) / size.width);
+	}
+
+	return {
+		width: width,
+		height: height,
+		itemsPerLine: itemsPerLine,
+		rect: {
+			width: rect.width,
+			height: rect.height,
+			top: rect.top,
+			left: rect.left,
+		},
+	};
+}
+
+function goStartPath()
+{
+	const root = history.root();
+
+	if(root.indexLabel?.has && !root.recentlyOpened)
+		indexLabel = root.indexLabel;
+
+	if(root.recentlyOpened)
+		recentlyOpened.load(true);
+	else
 		loadIndexPage(true, false);
-	}
-	else if(indexPathControlA.length > 0)
-	{
-		let goBack = indexPathControlA[indexPathControlA.length - 2];
-
-		if(goBack.isComic)
-			openComic(true, goBack.path, goBack.mainPath, false, true);
-		else
-			loadIndexPage(true, goBack.path, false, false, goBack.mainPath, true);
-
-
-		indexPathControlA.pop();
-	}
 }
 
-function indexPathControlUpdateLastComic(path = false)
+function removePageParam(path)
 {
-	let index = indexPathControlA.length - 1;
-	let last = indexPathControlA[index];
-
-	if(last.isComic && p.normalize(p.dirname(last.path)) === p.normalize(p.dirname(path)))
-	{
-		indexPathControlA[index].file = p.basename(path);
-		indexPathControlA[index].path = path;
-	}
+	return path.replace(/\?page=[0-9]+$/, '');
 }
 
-var barBackStatus = false; 
+var barBackStatus = false;
 
 // This needs to be improved more, if is from fromNextAndPrev, consider changing the previous route/path
-function indexPathControl(path = false, mainPath = false, isComic = false, fromNextAndPrev = false)
+function indexPathControl(path = false, mainPath = false, isComic = false, fromNextAndPrev = false, fromRecentlyOpened = false, fromPage = false)
 {
-	indexPathA = path;
-	indexMainPathA = mainPath;
-
 	if(path === false || mainPath === false)
 	{
-		indexPathControlA = [];
+		handlebarsContext.fromRecentlyOpened = fromRecentlyOpened;
+
+		history.clean();
+		history.add({root: true, file: false, path: false, mainPath: false, isComic: false, indexLabel: prevIndexLabel, recentlyOpened: fromRecentlyOpened, page: fromPage});
 	}
 	else
 	{
 		mainPathR = addSepToEnd(p.dirname(mainPath));
 
-		let files = path.replace(new RegExp('^\s*'+pregQuote(mainPathR)), '').split(p.sep);
+		const files = path.replace(new RegExp('^\s*'+pregQuote(mainPathR)), '').split(p.sep);
+		const index = files.length - 1;
 
-		let index = files.length - 1;
-
-		let len = indexPathControlA.length;
+		const current = history.current();
 
 		if(index >= 0)
 		{
-			if(len > 0 && isComic && fromNextAndPrev && indexPathControlA[len-1].isComic) // 
-				indexPathControlA[len-1] = {file: files[index], path: path, mainPath: mainPath, isComic: isComic};
-			else
-				indexPathControlA.push({file: files[index], path: path, mainPath: mainPath, isComic: isComic});
+			const page = {file: files[index], path: path, mainPath: mainPath, isComic: isComic, indexLabel: prevIndexLabel};
+
+			if(current && isComic && fromNextAndPrev && current.isComic)
+			{
+				history.update(page);
+			}
+			else if(!current || removePageParam(current.path || '') !== removePageParam(path) || current.mainPath !== mainPath || current.isComic !== isComic)
+			{
+				if(!history.fromGoForwards())
+					history.cleanForwards();
+
+				history.add(page);
+			}
+			else if(current && !current.root)
+			{
+				history.update(page);
+			}
 		}
 	}
 
-	if(indexPathControlA.length > 0)
+	const current = history.current();
+
+	if(!current.root)
 	{
 		if(!barBackStatus)
 		{
-			handlebarsContext['bar-back'] = 'show';
-			$('.bar-back').removeClass('disable active').addClass('show');
+			template.setHeaderDelay();
+			handlebarsContext.barBack = 'show';
+
+			//dom.queryAll('.bar-left, .bar-back').css({animationDelay: ''});
+			//dom.queryAll('.bar-left').removeClass('disable', 'active').addClass('show');
 		}
 		else
 		{
-			handlebarsContext['bar-back'] = 'active';
+			handlebarsContext.barBack = 'active';
 		}
 
 		barBackStatus = true;
@@ -1008,26 +1925,53 @@ function indexPathControl(path = false, mainPath = false, isComic = false, fromN
 	{
 		if(barBackStatus)
 		{
-			handlebarsContext['bar-back'] = 'disable';
-			$('.bar-back').removeClass('active show').addClass('disable');
+			template.setHeaderDelay();
+			handlebarsContext.barBack = 'disable';
+
+			//dom.queryAll('.bar-left, .bar-back').css({animationDelay: ''});
+			//dom.queryAll('.bar-left').removeClass('active', 'show').addClass('disable');
 		}
 		else
 		{
-			handlebarsContext['bar-back'] = '';
+			handlebarsContext.barBack = '';
 		}
 
 		barBackStatus = false;
 	}
 }
 
-/*Page - Languages*/
+/* Page - Recently Opened */
 
-function loadLanguagesPage(animation = true)
+function loadRecentlyOpened(animation = true)
 {
 	indexPathControl(false);
+	selectMenuItem('recently-opened');
+
+	onReading = _onReading = false;
+
+	reading.hideContent();
+
+	generateAppMenu();
+
+	recentlyOpened.load(animation);
+
+	if(readingActive)
+		readingActive = false;
+}
+
+/* Page - Theme */
+
+/*Page - Language*/
+
+function loadLanguagePage(animation = true)
+{
+	loadIndexContentLeft(animation, true);
+	indexPathControl(false, false, false, false, false, 'languages');
 	selectMenuItem('language');
 
-	onReading = false;
+	setCurrentPathScrollTop();
+
+	onReading = _onReading = false;
 
 	reading.hideContent();
 
@@ -1035,7 +1979,7 @@ function loadLanguagesPage(animation = true)
 
 	if(typeof handlebarsContext.languagesList == 'undefined')
 	{
-		var languagesList = $.parseJSON(readFileApp('/languages/languagesList.json'));
+		var languagesList = JSON.parse(readFileApp('/languages/languagesList.json'));
 
 		handlebarsContext.languagesList = [];
 
@@ -1063,7 +2007,9 @@ function loadLanguagesPage(animation = true)
 	floatingActionButton(false);
 
 	events.events();
+	shortcuts.register('browse');
 	gamepad.updateBrowsableItems('languagesPage');
+	tabs.update();
 
 	if(readingActive)
 		readingActive = false;
@@ -1076,45 +2022,57 @@ function changeLanguage(lan)
 	template.contentRight('.language-list.active').removeClass('active');
 	template.contentRight('.language-list-'+lan).addClass('active');
 
-	template.loadContentLeft('index.content.left.html', false);
+	dom.loadIndexContentLeft(false);
 	template.loadHeader('languages.header.html', false);
-	storage.updateVar('config', 'language', lan);
+	storage.setKey('config', 'language', lan);
 
 	gamepad.updateBrowsableItems(gamepad.currentKey());
+	tabs.update();
 }
 
 /* Page - Settings */
 
 function loadSettingsPage(animation = true)
 {
-	indexPathControl(false);
+	loadIndexContentLeft(animation, true);
+	indexPathControl(false, false, false, false, false, 'settings');
 	selectMenuItem('settings');
 
-	onReading = false;
+	setCurrentPathScrollTop();
+
+	onReading = _onReading = false;
 
 	reading.hideContent();
 
 	generateAppMenu();
+
+	shortcuts.register('browse');
+	settings.start();
 
 	template.loadContentRight('settings.content.right.html', animation);
 	template.loadHeader('settings.header.html', animation);
 	template.loadGlobalElement('general.elements.menus.html', 'menus');
 	floatingActionButton(false);
 
-	settings.start();
+	settings.startSecond();
 
 	if(readingActive)
 		readingActive = false;
+
+	tabs.update();
 }
 
 /* Page - Theme */
 
 function loadThemePage(animation = true)
 {
-	indexPathControl(false);
+	loadIndexContentLeft(animation, true);
+	indexPathControl(false, false, false, false, false, 'themes');
 	selectMenuItem('theme');
 
-	onReading = false;
+	setCurrentPathScrollTop();
+
+	onReading = _onReading = false;
 
 	reading.hideContent();
 
@@ -1125,16 +2083,21 @@ function loadThemePage(animation = true)
 	template.loadGlobalElement('general.elements.menus.html', 'menus');
 	floatingActionButton(false);
 
-	theme.start();
+	shortcuts.register('browse');
+	theme.start(animation);
 
 	if(readingActive)
 		readingActive = false;
+
+	tabs.update();
 }
+
+var currentSelectMenuItem = false;
 
 function selectMenuItem(page)
 {
-	let contentLeft = template.contentLeft().get(0);
-	//let contentLeft = dom.this(contentLeft);
+	currentSelectMenuItem = page;
+	let contentLeft = template._contentLeft();
 
 	let active = contentLeft.querySelector('.menu-item.active');
 	if(active) active.classList.remove('active');
@@ -1224,90 +2187,325 @@ function floatingActionButton(active, callback)
 	}
 }
 
-function changeView(mode, index)
+const defaultSortAndView = {
+	view: 'module',
+	sort: 'name',
+	sortInvert: false,
+	continueReading: true,
+	recentlyAdded: true,
+	viewModuleSize: 150,
+};
+
+function setCurrentPageVars(page, _indexLabel = false)
 {
-	var icon = '';
+	_indexLabel = _indexLabel || {};
+	let labelKey = false;
+	let sortAndView = false;
 
-	if(mode == 'module')
-		icon = 'view_module';
-	else
-		icon = 'sort';
+	let key = page;
 
-	if(index)
+	if(_indexLabel.has)
 	{
-		if(mode != config.viewIndex)
+		if(_indexLabel.favorites)
 		{
-			storage.updateVar('config', 'viewIndex', mode);
-			//$('.button-view').html(icon);
+			labelKey = key = 'favorites';
+		}
+		else if(_indexLabel.opds)
+		{
+			labelKey = key = 'opds';
+		}
+		else if(_indexLabel.masterFolder)
+		{
+			labelKey = 'masterFolder-'+_indexLabel.index;
+			key = 'masterFolder';
+		}
+		else if(_indexLabel.server)
+		{
+			labelKey = 'server-'+_indexLabel.index;
+			key = 'server';
+		}
+		else if(_indexLabel.label)
+		{
+			labelKey = 'label-'+_indexLabel.index;
+			key = 'label';
+		}
+
+		sortAndView = config.sortAndView[labelKey] || defaultSortAndView;
+	}
+
+	let extraKey = '';
+
+	if(page == 'recently-opened')
+		extraKey = 'RecentlyOpened';
+	else if(page == 'index')
+		extraKey = 'Index';
+	else if(page == 'reading')
+		extraKey = 'Reading';
+
+	const sortAndViewOpds = config.sortAndView.opds || defaultSortAndView;
+
+	handlebarsContext.page = {
+		..._indexLabel,
+		...{
+			key: key,
+			name: labelKey ? labelKey : page,
+			view: sortAndView ? sortAndView.view : config['view'+extraKey],
+			sort: sortAndView ? sortAndView.sort : config['sort'+extraKey],
+			sortInvert: sortAndView ? sortAndView.sortInvert : config['sortInvert'+extraKey],
+			foldersFirst: sortAndView ? true : (config['foldersFirst'+extraKey] || false),
+			compressedFirst: sortAndView ? true : (config['compressedFirst'+extraKey] || false),
+			boxes: (page == 'recently-opened' || page == 'browsing') ? false : true,
+			continueReading: sortAndView ? sortAndView.continueReading : config['continueReading'+extraKey],
+			recentlyAdded: sortAndView ? sortAndView.recentlyAdded : config['recentlyAdded'+extraKey],
+			viewModuleSize: sortAndView ? sortAndView.viewModuleSize : config['viewModuleSize'+extraKey],
+			filter: _indexLabel.filter || {},
+			labelOrFavorites: !!(_indexLabel.label || _indexLabel.favorites),
+			fadeCompleted: sortAndView ? sortAndView.fadeCompleted : config['fadeCompleted'+extraKey],
+			progressBar: sortAndView ? sortAndView.progressBar : config['progressBar'+extraKey],
+			progressPages: sortAndView ? sortAndView.progressPages : config['progressPages'+extraKey],
+			progressPercent: sortAndView ? sortAndView.progressPercent : config['progressPercent'+extraKey],
+			opds: {
+				continueReading: sortAndViewOpds.continueReading,
+				recentlyAdded: sortAndViewOpds.recentlyAdded,
+			},
+		}
+	};
+}
+
+function changeView(mode, page)
+{
+	let labelKey = false;
+	let sortAndView = false;
+
+	if(/favorites|opds|masterFolder|server|label/.test(page))
+	{
+		labelKey = page;
+
+		sortAndView = config.sortAndView[labelKey] || defaultSortAndView;
+	}
+
+	let changed = false;
+
+	if(sortAndView)
+	{
+		if(mode != sortAndView.view)
+		{
+			sortAndView.view = mode;
+			config.sortAndView[labelKey] = sortAndView;
+
+			storage.setKey('config', 'sortAndView', config.sortAndView);
 			selectElement('.view-'+mode);
-			loadIndexPage(true, false, true, true);
+			changed = true;
 		}
 	}
 	else
 	{
-		if(mode != config.view)
+		let extraKey = '';
+
+		if(page == 'recently-opened')
+			extraKey = 'RecentlyOpened';
+		else if(page == 'index')
+			extraKey = 'Index';
+		else if(page == 'reading')
+			extraKey = 'Reading';
+
+		if(mode != config['view'+extraKey])
 		{
-			storage.updateVar('config', 'view', mode);
-			//$('.button-view').html(icon);
+			storage.setKey('config', 'view'+extraKey, mode);
 			selectElement('.view-'+mode);
-			loadIndexPage(true, indexPathA, true, true, indexMainPathA);
+			changed = true;
 		}
+	}
+
+	if(changed)
+	{
+		dom.this(template._globalElement().querySelector('.view-module-size')).class(!(mode == 'module'), 'disable-pointer');
+		dom.reload();
 	}
 }
 
-function changeSort(type, mode, index)
+function changeViewModuleSize(size, end, page)
 {
-	if(type == 1)
+	if(!end) return;
+
+	let labelKey = false;
+	let sortAndView = false;
+
+	if(/favorites|opds|masterFolder|server|label/.test(page))
 	{
-		if(index)
+		labelKey = page;
+
+		sortAndView = config.sortAndView[labelKey] || defaultSortAndView;
+	}
+
+	let changed = false;
+
+	if(sortAndView)
+	{
+		if(size != sortAndView.viewModuleSize)
 		{
-			if(mode != config.sortIndex)
-			{
-				storage.updateVar('config', 'sortIndex', mode);
-				selectElement('.sort-'+mode);
-				loadIndexPage(true, false, true, true);
-			}
-		}
-		else
-		{
-			if(mode != config.sort)
-			{
-				storage.updateVar('config', 'sort', mode);
-				selectElement('.sort-'+mode);
-				loadIndexPage(true, indexPathA, true, true, indexMainPathA);
-			}
+			sortAndView.viewModuleSize = size;
+			config.sortAndView[labelKey] = sortAndView;
+
+			storage.setKey('config', 'sortAndView', config.sortAndView);
+			changed = true;
 		}
 	}
-	else if(type == 2)
+	else
 	{
-		if(index)
+		let extraKey = '';
+
+		if(page == 'recently-opened')
+			extraKey = 'RecentlyOpened';
+		else if(page == 'index')
+			extraKey = 'Index';
+		else if(page == 'reading')
+			extraKey = 'Reading';
+
+		if(size != config['viewModuleSize'+extraKey])
 		{
-			if(mode != config.sortInvertIndex)
-			{
-				storage.updateVar('config', 'sortInvertIndex', mode);
-				selectElement('.sort-'+mode);
-				loadIndexPage(true, false, true, true);
-			}
-		}
-		else
-		{
-			if(mode != config.sortInvert)
-			{
-				storage.updateVar('config', 'sortInvert', mode);
-				selectElement('.sort-'+mode);
-				loadIndexPage(true, indexPathA, true, true, indexMainPathA);
-			}
+			storage.setKey('config', 'viewModuleSize'+extraKey, size);
+			changed = true;
 		}
 	}
-	else if(type == 3)
+
+	if(changed)
+		dom.reload();
+}
+
+function changeSort(type, mode, page)
+{
+	let labelKey = false;
+	let sortAndView = false;
+
+	if(/favorites|opds|masterFolder|server|label/.test(page))
 	{
-		if(mode != config.foldersFirst)
+		labelKey = page;
+
+		sortAndView = config.sortAndView[labelKey] || defaultSortAndView;
+	}
+
+	let changed = false;
+
+	if(sortAndView)
+	{
+		if(type == 1)
 		{
-			storage.updateVar('config', 'foldersFirst', mode);
+			if(mode != sortAndView.sort)
+			{
+				sortAndView.sort = mode;
+				changed = true;
+			}
+			else if(mode === 'shuffle')
+			{
+				changed = true;
+			}
+		}
+		else if(type == 2)
+		{
+			if(mode != sortAndView.sortInvert)
+			{
+				sortAndView.sortInvert = mode;
+				changed = true;
+			}
+		}
+
+		if(changed)
+		{
+			config.sortAndView[labelKey] = sortAndView;
+
+			storage.setKey('config', 'sortAndView', config.sortAndView);
 			selectElement('.sort-'+mode);
-			loadIndexPage(true, indexPathA, true, true, indexMainPathA);
 		}
 	}
+	else
+	{
+		let extraKey = '';
+
+		if(page == 'recently-opened')
+			extraKey = 'RecentlyOpened';
+		else if(page == 'index')
+			extraKey = 'Index';
+		else if(page == 'reading')
+			extraKey = 'Reading';
+
+		if(type == 1)
+		{
+			if(mode != config['sort'+extraKey])
+			{
+				storage.setKey('config', 'sort'+extraKey, mode);
+				selectElement('.sort-'+mode);
+				changed = true;
+			}
+			else if(mode === 'shuffle')
+			{
+				changed = true;
+			}
+		}
+		else if(type == 2)
+		{
+			if(mode != config['sortInvert'+extraKey])
+			{
+				storage.setKey('config', 'sortInvert'+extraKey, mode);
+				changed = true;
+			}
+		}
+		else if(type == 3)
+		{
+			if(mode != config['foldersFirst'+extraKey])
+			{
+				storage.setKey('config', 'foldersFirst'+extraKey, mode);
+				changed = true;
+			}
+		}
+		else if(type == 4)
+		{
+			if(mode != config['compressedFirst'+extraKey])
+			{
+				storage.setKey('config', 'compressedFirst'+extraKey, mode);
+				changed = true;
+			}
+		}
+	}
+
+	if(changed)
+		dom.reload();
+}
+
+function changeConfig(key, value, page)
+{
+	let labelKey = false;
+	let sortAndView = false;
+
+	if(/favorites|opds|masterFolder|server|label/.test(page))
+	{
+		labelKey = page;
+
+		sortAndView = config.sortAndView[labelKey] || defaultSortAndView;
+	}
+
+	let changed = false;
+
+	if(sortAndView)
+	{
+		sortAndView[key] = value;
+
+		config.sortAndView[labelKey] = sortAndView;
+		storage.setKey('config', 'sortAndView', config.sortAndView);
+	}
+	else
+	{
+		let extraKey = '';
+
+		if(page == 'recently-opened')
+			extraKey = 'RecentlyOpened';
+		else if(page == 'index')
+			extraKey = 'Index';
+
+		storage.setKey('config', key+extraKey, value);
+	}
+
+	dom.reload();
 }
 
 function selectElement(element)
@@ -1316,70 +2514,359 @@ function selectElement(element)
 	$(element).addClass('s');
 }
 
-function justifyViewModule()
-{
-	if(config.viewIndex == 'module')
-	{
-		let contentRight = template.contentRight().get(0);
-		let rect = contentRight.firstElementChild.getBoundingClientRect();
-
-		let contentPerLine = Math.floor((rect.width - 16) / (150 + 16));
-		contentPerLine = contentPerLine > 0 ? contentPerLine : 1;
-
-		let marginLeft = ((rect.width - 16) - (contentPerLine * (150 + 16))) / (contentPerLine - 1);
-
-		let viewModule = contentRight.querySelectorAll('.content-view-module > div');
-
-		for(let i = 0, len = viewModule.length; i < len; i++)
-		{
-			let _this = viewModule[i];
-
-			if(contentPerLine == 1)
-				_this.style.marginLeft = ((rect.width / 2) - (150 / 2))+'px';
-			else if(i % contentPerLine == 0)
-				_this.style.marginLeft = '16px';
-			else
-				_this.style.marginLeft = (marginLeft + 16)+'px';
-		}
-	}
-}
-
 //Enable/Disable night mode
 
-function nightMode()
+let nightModeTransitionST = false;
+
+function nightMode(force = null)
 {
-	if($('.app').hasClass('night-mode'))
+	clearTimeout(nightModeTransitionST);
+	let _app = document.querySelector('.app');
+
+	_app.classList.add('night-mode-transition');
+
+	if((force === null && _app.classList.contains('night-mode')) || force === false)
 	{
-		$('.app').removeClass('night-mode');
-		$('.button-night-mode').html('light_mode');
+		_app.classList.remove('night-mode');
+		dom.queryAll('.button-night-mode').html('light_mode');
 		handlebarsContext.nightMode = false;
-		storage.updateVar('config', 'nightMode', false);
+		storage.setKey('config', 'nightMode', false);
 	}
 	else
 	{
-		$('.app').addClass('night-mode');
-		$('.button-night-mode').html('dark_mode');
+		_app.classList.add('night-mode');
+		dom.queryAll('.button-night-mode').html('dark_mode');
 		handlebarsContext.nightMode = true;
-		storage.updateVar('config', 'nightMode', true);
+		storage.setKey('config', 'nightMode', true);
 	}
+
+	nightModeConfig(_app);
+	titleBar.setColors();
+
+	nightModeTransitionST = setTimeout(function() {
+
+		_app.classList.remove('night-mode-transition');
+
+	}, 210);
 }
 
-// Show the comic contet menu
-function comicContextMenu(path, fromIndex = true, gamepad = false)
+function nightModeConfig(_app = false)
+{
+	_app = _app || document.querySelector('.app');
+
+	if(config.lightModeBlackBackgroundOnReading)
+		_app.classList.add('light-mode-black-background-on-reading');
+	else
+		_app.classList.remove('light-mode-black-background-on-reading');
+
+	if(config.nightModeBlackBackground)
+		_app.classList.add('night-mode-black-background');
+	else
+		_app.classList.remove('night-mode-black-background');
+
+	if(config.nightModeWhiteBlankPage)
+		_app.classList.add('night-mode-white-blank-page');
+	else
+		_app.classList.remove('night-mode-white-blank-page');
+}
+
+let comicContextMenuIndex = 0;
+
+// Show the comic context menu
+async function comicContextMenu(path, mainPath, fromIndex = true, fromIndexNotMasterFolders = true, folder = false, gamepad = false)
 {	
+	comicContextMenuIndex++;
+
+	let isServer = fileManager.isServer(path);
+	if(fileManager.isOpds(path))
+	{
+		const onclick = this.getAttribute('onclick');
+
+		if(onclick)
+		{
+			opds.fromContextMenu = true;
+			eval(onclick);
+		}
+
+		return;
+	}
+
+	const canBeDelete = (!isServer && !fileManager.lastCompressedFile(p.dirname(path))) ? true : false;
+
+	dom.query('#index-context-menu .separator-remove').css({display: canBeDelete ? 'block' : 'none'});
+
 	// Remove
 	let remove = document.querySelector('#index-context-menu .context-menu-remove');
 
-	if(fromIndex)
+	if(fromIndexNotMasterFolders)
+	{
 		remove.style.display = 'block';
+		remove.setAttribute('onclick', 'dom.removeComic(\''+escapeQuotes(escapeBackSlash(path), 'simples')+'\');');
+	}
 	else
+	{
 		remove.style.display = 'none';
+	}
 
-	remove.setAttribute('onclick', 'dom.removeComic(\''+escapeQuotes(escapeBackSlash(path), 'simples')+'\');');
+	// Move to trash
+	let moveToTrash = document.querySelector('#index-context-menu .context-menu-move-to-trash');
 
-	// Open file location
-	let openFileLocation = document.querySelector('#index-context-menu .context-menu-open-file-location');
-	openFileLocation.setAttribute('onclick', 'electron.shell.showItemInFolder(\''+escapeQuotes(escapeBackSlash(fileManager.firstCompressedFile(path)), 'simples')+'\');');
+	if(canBeDelete)
+	{
+		moveToTrash.style.display = 'block';
+		moveToTrash.setAttribute('onclick', 'dom.moveToTrash(\''+escapeQuotes(escapeBackSlash(path), 'simples')+'\', '+(fromIndexNotMasterFolders ? 'true' : 'false')+');');
+	}
+	else
+	{
+		moveToTrash.style.display = 'none';
+	}
+
+	// Delete permanently
+	let deletePermanently = document.querySelector('#index-context-menu .context-menu-delete-permanently');
+
+	if(canBeDelete)
+	{
+		deletePermanently.style.display = 'block';
+		deletePermanently.setAttribute('onclick', 'dom.deletePermanently(\''+escapeQuotes(escapeBackSlash(path), 'simples')+'\', '+(fromIndexNotMasterFolders ? 'true' : 'false')+');');
+	}
+	else
+	{
+		deletePermanently.style.display = 'none';
+	}
+
+	dom.query('#index-context-menu .separator-labels').css({display: fromIndex ? 'block' : 'none'});
+
+	// Open in new tab
+	let openInNewTab = document.querySelector('#index-context-menu .context-menu-open-in-new-tab');
+	openInNewTab.setAttribute('onclick', 'tabs.openPath(\''+escapeQuotes(escapeBackSlash(path), 'simples')+'\', \''+escapeQuotes(escapeBackSlash(mainPath), 'simples')+'\');');
+
+	// Open in new window
+	let openInNewWindow = document.querySelector('#index-context-menu .context-menu-open-in-new-window');
+	openInNewWindow.setAttribute('onclick', 'openPathInNewWindow(\''+escapeQuotes(escapeBackSlash(path), 'simples')+'\', \''+escapeQuotes(escapeBackSlash(mainPath), 'simples')+'\');');
+
+	// Mark read an unread
+	let markRead = document.querySelector('#index-context-menu .context-menu-mark-read');
+	let markUnread = document.querySelector('#index-context-menu .context-menu-mark-unread');
+	let separatorMark = document.querySelector('#index-context-menu .separator-mark');
+
+	if(fromIndex || folder)
+	{
+		const currentIndex = comicContextMenuIndex;
+
+		markRead.style.display = 'block';
+		markUnread.style.display = 'block';
+		separatorMark.style.display = 'block';
+
+		markRead.classList.add('disable-pointer');
+		markUnread.classList.add('disable-pointer');
+
+		(async function(){
+
+			try
+			{
+				const progress = await reading.progress.get(path);
+				reading.progress.updateProgress(path, progress);
+
+				if(currentIndex !== comicContextMenuIndex)
+					return;
+
+				dom.this(markRead).class(progress.completed, 'disable-pointer');
+				markRead.setAttribute('onclick', 'reading.progress.read(\''+escapeQuotes(escapeBackSlash(path), 'simples')+'\');');
+
+				dom.this(markUnread).class((progress.percent === 0), 'disable-pointer');
+				markUnread.setAttribute('onclick', 'reading.progress.unread(\''+escapeQuotes(escapeBackSlash(path), 'simples')+'\');');
+			}
+			catch(error)
+			{
+				console.error(error);
+			}
+
+		})()
+	}
+	else
+	{
+		markRead.style.display = 'none';
+		markUnread.style.display = 'none';
+		separatorMark.style.display = 'none';
+	}
+
+	// Favorite
+	let favorite = document.querySelector('#index-context-menu .context-menu-favorite');
+
+	if(fromIndex || folder)
+	{
+		let favorites = relative.get('favorites');
+		let isFavorte = favorites[path] ? true : false;
+
+		favorite.style.display = 'block';
+		favorite.setAttribute('onclick', 'dom.labels.setFavorite(\''+escapeQuotes(escapeBackSlash(path), 'simples')+'\');');
+
+		if(isFavorte)
+			favorite.querySelector('i').classList.add('fill');
+		else
+			favorite.querySelector('i').classList.remove('fill');
+	}
+	else
+	{
+		favorite.style.display = 'none';
+	}
+
+	// Labels
+	let labels = document.querySelector('#index-context-menu .context-menu-labels');
+
+	if(fromIndex || folder)
+	{
+		labels.style.display = 'block';
+		labels.setAttribute('onclick', 'dom.labels.setLabels(\''+escapeQuotes(escapeBackSlash(path), 'simples')+'\');');
+
+		if(dom.labels.has(path))
+			labels.querySelector('i').classList.add('fill');
+		else
+			labels.querySelector('i').classList.remove('fill');
+	}
+	else
+	{
+		labels.style.display = 'none';
+	}
+
+	if(isServer)
+	{
+		dom.query('#index-context-menu .separator-poster, #index-context-menu .separator-preprocess-images-with-ai').css({display: 'none'});
+
+		let openFileLocation = document.querySelector('#index-context-menu .context-menu-open-file-location');
+		let addPoster = document.querySelector('#index-context-menu .context-menu-add-poster');
+		let deletePoster = document.querySelector('#index-context-menu .context-menu-delete-poster');
+		let clearFileCache = document.querySelector('#index-context-menu .context-menu-clear-file-cache');
+		let setAsPoster = document.querySelector('#index-context-menu .context-menu-set-as-poster');
+		let setAsPosterFolders = document.querySelector('#index-context-menu .context-menu-set-as-poster-folders');
+		let preprocessImagesWithAI = document.querySelector('#index-context-menu .context-menu-preprocess-images-with-ai');
+
+		openFileLocation.style.display = 'none';
+		addPoster.style.display = 'none';
+		deletePoster.style.display = 'none';
+		clearFileCache.style.display = 'none';
+		setAsPoster.style.display = 'none';
+		setAsPosterFolders.style.display = 'none';
+		preprocessImagesWithAI.style.display = 'none';
+	}
+	else
+	{
+		dom.query('#index-context-menu .separator-poster').css({display: 'block'});
+
+		// Open file location
+		let openFileLocation = document.querySelector('#index-context-menu .context-menu-open-file-location');
+		openFileLocation.setAttribute('onclick', 'electron.shell.showItemInFolder(\''+escapeQuotes(escapeBackSlash(fileManager.firstCompressedFile(path)), 'simples')+'\');');
+		openFileLocation.style.display = 'block';
+
+		// Add poster and delete
+		let addPoster = document.querySelector('#index-context-menu .context-menu-add-poster');
+		let deletePoster = document.querySelector('#index-context-menu .context-menu-delete-poster');
+		addPoster.style.display = 'block';
+		deletePoster.style.display = 'block';
+
+		if(folder)
+		{
+			addPoster.style.display = 'block';
+
+			let images = [];
+
+			try
+			{
+				let file = fileManager.file(path, {subtask: true});
+				images = await file.images(2, false, true);
+				file.destroy();
+			}
+			catch{}
+
+			let poster = !Array.isArray(images) ? images : false;
+
+			addPoster.setAttribute('onclick', 'dom.poster.add('+(fromIndexNotMasterFolders ? 'true' : 'false')+', \''+escapeQuotes(escapeBackSlash(path), 'simples')+'\', '+(poster ? '\''+escapeQuotes(escapeBackSlash(poster.path), 'simples')+'\'' : 'false')+');');
+			addPoster.querySelector('span').innerHTML = poster ? language.global.contextMenu.changePoster : language.global.contextMenu.addPoster;
+
+			if(poster && !poster.fromFirstImageAsPoster)
+			{
+				deletePoster.style.display = 'block';
+				deletePoster.setAttribute('onclick', 'dom.poster.delete(\''+escapeQuotes(escapeBackSlash(poster.path), 'simples')+'\');');
+			}
+			else
+			{
+				deletePoster.style.display = 'none';
+			}
+
+			openFileLocation.querySelector('span').innerHTML = language.global.contextMenu.openFolderLocation;
+		}
+		else
+		{
+			addPoster.style.display = 'none';
+			deletePoster.style.display = 'none';
+
+			openFileLocation.querySelector('span').innerHTML = language.global.contextMenu.openFileLocation;
+		}
+
+		// Set image as poster
+		let setAsPoster = document.querySelector('#index-context-menu .context-menu-set-as-poster');
+		let setAsPosterFolders = document.querySelector('#index-context-menu .context-menu-set-as-poster-folders');
+
+		if(!folder)
+		{
+			setAsPoster.style.display = 'block';
+			setAsPosterFolders.style.display = 'block';
+
+			setAsPoster.setAttribute('onclick', 'dom.poster.setAsPoster(\''+escapeQuotes(escapeBackSlash(path), 'simples')+'\');');
+			setAsPosterFolders.setAttribute('onclick', 'dom.poster.setAsPosterFolders(\''+escapeQuotes(escapeBackSlash(path), 'simples')+'\', \''+escapeQuotes(escapeBackSlash(mainPath), 'simples')+'\');');
+		}
+		else
+		{
+			setAsPoster.style.display = 'none';
+			setAsPosterFolders.style.display = 'none';
+		}
+
+		// Clear file cache
+		let clearFileCache = document.querySelector('#index-context-menu .context-menu-clear-file-cache');
+
+		clearFileCache.setAttribute('onclick', 'dom.clearFileCache.clear(\''+escapeQuotes(escapeBackSlash(path), 'simples')+'\');');
+		clearFileCache.style.display = folder ? 'block' : 'none';
+
+		// Preprocess images with AI
+		const hasPreprocess = folder; //  && contextMenu.hasPreprocessImagesWithAI();
+		let preprocessImagesWithAI = document.querySelector('#index-context-menu .context-menu-preprocess-images-with-ai');
+
+		preprocessImagesWithAI.setAttribute('onclick', 'dom.contextMenu.preprocessImagesWithAI();');
+		preprocessImagesWithAI.style.display = hasPreprocess ? 'block' : 'none';
+
+		dom.query('#index-context-menu .separator-preprocess-images-with-ai').css({display: hasPreprocess ? 'block' : 'none'});
+	}
+
+	console.log(contextMenu.hasPreprocessImagesWithAI())
+
+	// File info
+	let fileInfo = document.querySelector('#index-context-menu .context-menu-file-info');
+
+	fileInfo.setAttribute('onclick', 'dom.fileInfo.show(\''+escapeQuotes(escapeBackSlash(path), 'simples')+'\');');
+	fileInfo.style.display = folder ? 'block' : 'none';
+
+	if(/app\.asar\.unpacked/.test(path)) // Is the Pepper & Carrot example comic
+	{
+		let addPoster = document.querySelector('#index-context-menu .context-menu-add-poster');
+		let deletePoster = document.querySelector('#index-context-menu .context-menu-delete-poster');
+		let setAsPoster = document.querySelector('#index-context-menu .context-menu-set-as-poster');
+		let setAsPosterFolders = document.querySelector('#index-context-menu .context-menu-set-as-poster-folders');
+		let moveToTrash = document.querySelector('#index-context-menu .context-menu-move-to-trash');
+		let deletePermanently = document.querySelector('#index-context-menu .context-menu-delete-permanently');
+
+		addPoster.style.display = 'none';
+		deletePoster.style.display = 'none';
+		setAsPoster.style.display = 'none';
+		setAsPosterFolders.style.display = 'none';
+		moveToTrash.style.display = 'none';
+		deletePermanently.style.display = 'none';
+
+		if(!fromIndex)
+		{
+			dom.query('#index-context-menu .separator-poster').css({display: 'none'});
+			dom.query('#index-context-menu .separator-remove').css({display: 'none'});
+		}
+	}
 
 	if(gamepad)
 		events.activeMenu('#index-context-menu', false, 'gamepad');
@@ -1388,50 +2875,195 @@ function comicContextMenu(path, fromIndex = true, gamepad = false)
 }
 
 // Remove the comic from OpenComic
-function removeComic(path, confirm = false)
+function removeComic(paths, confirm = false, reload = true)
 {
-	var _comics = [], comics = storage.get('comics');
+	if(typeof paths === 'string')
+		paths = [paths]
+
+	paths = paths.map(path => relative.path(path));
+	const _comics = [], comics = storage.get('comics');
 
 	for(let i in comics)
 	{
-		if(comics[i].path != path)
+		if(!paths.includes(comics[i].path))
 			_comics.push(comics[i]);
 	}
 
-	storage.update('comics', _comics);
+	storage.set('comics', _comics);
 
-	dom.loadIndexPage(true, false, true, true);
+	if(reload) dom.reload();
 }
+
+async function moveToTrash(paths, fromIndex = false, confirm = false)
+{
+	if(typeof paths === 'string')
+		paths = [paths];
+
+	for(const path of paths)
+	{
+		await dom.poster.findAndDelete(path, true, true);
+
+		if(!fs.existsSync(path))
+			continue;
+
+		try
+		{
+			await electron.ipcRenderer.invoke('move-to-trash', path);
+		}
+		catch(error)
+		{
+			if(fs.existsSync(path))
+				console.error('Failed to move to trash:', path, error);
+		}
+	}
+
+	if(fromIndex)
+		dom.removeComic(paths, true, false);
+
+	dom.reload();
+}
+
+let deletePermanentlyPaths = [];
+
+async function deletePermanently(paths = false, fromIndex = false, confirm = false)
+{	
+	if(typeof paths === 'string')
+		paths = [paths];
+	else if(!paths)
+		paths = deletePermanentlyPaths;
+
+	if(confirm)
+	{
+		for(const path of paths)
+		{
+			try
+			{
+				await dom.poster.findAndDelete(path, false, true);
+
+				if(fs.existsSync(path))
+					fs.rmSync(path, {recursive: true});
+			}
+			catch(error)
+			{
+				if(fs.existsSync(path))
+					console.error('Failed to delete permanently:', path, error);
+			}
+		}
+
+		if(fromIndex)
+			dom.removeComic(paths, true, false);
+
+		dom.reload();
+	}
+	else
+	{
+		deletePermanentlyPaths = paths;
+
+		events.dialog({
+			header: language.global.contextMenu.deletePermanently,
+			width: 400,
+			height: false,
+			content: language.global.contextMenu.deletePermanentlyConfirm,
+			buttons: [
+				{
+					text: language.buttons.cancel,
+					function: 'events.closeDialog();',
+				},
+				{
+					text: language.global.contextMenu.deletePermanently,
+					function: 'events.closeDialog(); dom.deletePermanently(false, '+(fromIndex ? 'true' : 'false')+', true);',
+				}
+			],
+		});
+	}
+}
+
 
 var readingActive = false, skipNextComic = false, skipPreviousComic = false;
 
 async function openComic(animation = true, path = true, mainPath = true, end = false, fromGoBack = false, fromNextAndPrev = false)
 {
-	// Start reading comic
-	currentPathScrollTop[currentPath === false ? 0 : currentPath] = template.contentRight().children().scrollTop();
-	currentPath = path;
+	let contentRightIndex = template.contentRightIndex();
 
-	// Show loadign page
-	handlebarsContext.comics = [];
-	template.loadContentLeft('reading.content.left.html', true);
-	template.loadContentRight('reading.content.right.html', true);
-	template.loadHeader('reading.header.html', true);
-	headerPath(path, mainPath);
+	settings.purgeTemporaryFilesEveryTimes(10);
+	fileManager.revokeAllObjectURL();
+	reading.render.clean(true);
+	reading.render.revokeAllObjectURL();
+	workers.clean('convertImage');
+
+	dom.setCurrentPageVars('reading');
+
+	// Start reading comic
+	if(config.readingStartReadingInFullScreen && !fromNextAndPrev && !fromGoBack)
+	{
+		if(!isFullScreen)
+			fullScreen(true);
+	}
+
+	reading.setIsLoaded(false);
+	onReading = _onReading = true;
+
+	// Remove page param in epub files
+	path = removePageParam(path);
+
+	setCurrentPathScrollTop(path);
+
+	let now = Date.now();
 
 	let startImage = false;
 	let imagePath = path;
 	let indexStart = 1;
+	let readingProgress = mainPath ? relative.get('readingProgress')[mainPath] : false;
 
-	if(compatibleMime.indexOf(mime.getType(path)) != -1)
+	if(compatible.image(path))
 	{
 		startImage = path;
 		path = p.dirname(path);
 	}
 
-	let file = fileManager.file(path);
-	let files = await file.read();
+	// Show loadign page
+	headerPath(path, mainPath, true);
 
-	let isCanvas = false;
+	// Load files
+	let file = fileManager.file(path);
+	let files = [];
+
+	try
+	{
+		files = await file.read({filtered: false, sort: {extraKey: 'Reading'}});
+	}
+	catch(error)
+	{
+		console.error(error);
+		dom.compressedError(error);
+
+		return;
+	}
+
+	let hasMusic = await reading.music.has(files, path);
+	handlebarsContext.hasMusic = hasMusic;
+
+	files = fileManager.filtered(files);
+
+	handlebarsContext.comics = [];
+
+	if(!template._contentRight().querySelector('.loading'))
+	{
+		handlebarsContext.loading = true;
+		contentRightIndex = template.loadContentRight('reading.content.right.html', animation);
+		file.updateContentRightIndex();
+	}
+
+	handlebarsContext.barBack = 'active';
+	template.loadHeader('reading.header.html', animation);
+	template.loadContentLeft('reading.content.left.html', animation);
+	reading.sidebar.setScrollTop(0, false, false);
+	tabs.update();
+
+	reading.hideContent(isFullScreen, true);
+
+	let isPdf = false;
+	let isEbook = false;
 	let compressedFile = fileManager.lastCompressedFile(path);
 
 	if(compressedFile)
@@ -1439,24 +3071,56 @@ async function openComic(animation = true, path = true, mainPath = true, end = f
 		let features = fileManager.fileCompressed(compressedFile);
 		features = features.getFeatures();
 
-		if(features.canvas)
+		if(features.pdf && !file.config.extractDocumentImages)
 		{
 			await file.makeAvailable([{path: compressedFile}]);
-			isCanvas = true;
+			isPdf = true;
+		}
+		else if(features.ebook && !file.config.extractDocumentImages)
+		{
+			await file.makeAvailable([{path: compressedFile}]);
+			isEbook = true;
+			// files = [];
 		}
 		else
 		{
-			await file.makeAvailable(files);
+			await file.makeAvailable([{path: compressedFile}]); // Make avaiable only the compressed file
 		}
 	}
+	else if(fileManager.isServer(path))
+	{
+		await file.makeAvailable(files, false, true);
+	}
+
+	file.destroy();
 
 	skipNextComic = await nextComic(path, mainPath);
 	skipPreviousComic = await previousComic(path, mainPath);
 
+	// The user has gone back before finishing loading
+	if(!onReading)
+		return;
+
+	// Avoid continue if another comic has been opened
+	if(contentRightIndex != template.contentRightIndex())
+		return;
+
 	if(!fromGoBack)
 		indexPathControl(imagePath, mainPath, true, fromNextAndPrev);
 
+	if(isEbook && readingProgress?.ebook)
+	{
+		const readingProgressBookPath = fileManager.lastCompressedFile(readingProgress.path);
+		const imageBookPath = fileManager.lastCompressedFile(imagePath);
+
+		if(readingProgressBookPath && imageBookPath && p.normalize(readingProgressBookPath) === p.normalize(imageBookPath))
+			reading.setNextOpenChapterProgress(readingProgress.chapterIndex, readingProgress.chapterProgress);
+	}
+
 	readingActive = true;
+
+	cache.cleanQueue();
+	cache.stopQueue();
 
 	let comics = [];
 
@@ -1473,12 +3137,6 @@ async function openComic(animation = true, path = true, mainPath = true, end = f
 				images.push(file);
 		}
 
-		let thumbnails = cache.returnThumbnailsImages(images, function(data) {
-
-			addImageToDom(data.sha, data.path);
-
-		}, file);
-
 		for(let i = 0; i < len; i++)
 		{
 			let file = files[i];
@@ -1487,6 +3145,7 @@ async function openComic(animation = true, path = true, mainPath = true, end = f
 			{
 				let fileImage = fileManager.file(file.path);
 				let images = await fileImage.images(4);
+				fileImage.destroy();
 
 				if(images.length > 0)
 				{
@@ -1502,17 +3161,15 @@ async function openComic(animation = true, path = true, mainPath = true, end = f
 			}
 			else
 			{
-				let thumbnail = thumbnails[file.sha] || {};
-
 				comics.push({
 					sha: file.sha,
 					name: file.name.replace(/\.[^\.]*$/, ''),
 					image: fileManager.realPath(file.path),
 					path: file.path,
 					mainPath: mainPath,
-					thumbnail: (thumbnail.cache) ? thumbnail.path : '',
 					size: file.size || false,
-					canvas: isCanvas,
+					pdf: isPdf,
+					ebook: isEbook,
 					folder: false,
 				});		
 			}
@@ -1521,34 +3178,85 @@ async function openComic(animation = true, path = true, mainPath = true, end = f
 
 	for(let i = 0, len = comics.length; i < len; i++)
 	{
-		comics[i].index = i + 1;
+		comics[i].index = i + 1; // Page?
 
 		if(comics[i].path == imagePath)
 			indexStart = comics[i].index;
 	}
 
+	// Fallback: https://github.com/ollm/OpenComic/issues/636
+	// if(startImage && indexStart === 1 && readingProgress?.index >= 1 && readingProgress.index <= comics.length)
+	//	indexStart = readingProgress.index;
+
+	if(isEbook)
+		comics = [];
+
+	if(config.readingDisableThumbnails) // Only used if thumbnails are disabled
+	{
+		const nameDiff = diff.list(comics.map((comic) => !comic.folder ? comic.name : ''), ' - ');
+
+		comics = comics.map(function(comic, index){
+
+			comic.nameDiff = nameDiff[index];
+			return comic;
+
+		});
+	}
+
 	handlebarsContext.comics = comics;
 	handlebarsContext.previousComic = skipPreviousComic;
 	handlebarsContext.nextComic = skipNextComic;
-	headerPath(path, mainPath);
 	reading.setCurrentComics(comics);
+	reading.sidebar.context();
 
-	template.loadContentLeft('reading.content.left.html', true);
-	template.loadContentRight('reading.content.right.html', true);
-	template.loadHeader('reading.header.html', true);
+	handlebarsContext.loading = true;
+
+	if(Date.now() - now < 200)
+	{
+		if(template._contentRight().querySelector('.loading') && !template._contentRight().querySelector('.reading-body'))
+		{
+			handlebarsContext.loading = false;
+			template._contentRight().firstElementChild.insertAdjacentHTML('beforeend', template.load('reading.content.right.html'));
+		}
+		else
+		{
+			template._contentRight().firstElementChild.innerHTML = template.load('reading.content.right.html');
+		}
+
+		template._contentLeft().firstElementChild.innerHTML = template.load('reading.content.left.html');
+		reading.sidebar.setScrollTop(0, false, false);
+	}
+	else
+	{
+		template.loadContentLeft('reading.content.left.html', animation);
+		template.loadContentRight('reading.content.right.html', animation);
+		reading.sidebar.setScrollTop(0, false, false);
+	}
+
+	template._contentLeft().firstElementChild.style.height = 'calc(100% - 66px)';
+
 	if(template.globalElement('.reading-elements-menus').length == 0) template.loadGlobalElement('reading.elements.menus.html', 'menus');
 
 	floatingActionButton(false);
 	
-	events.events();
+	events.eventsFast();
 
-	reading.read(path, indexStart, end, isCanvas);
-	reading.hideContent(electronRemote.getCurrentWindow().isFullScreen(), true);
+	reading.onLoad(function(){
+
+		cache.resumeQueue();
+		reading.discord.update();
+
+	});
+
+	reading.read(path, indexStart, end, isPdf, isEbook, imagePath);
+	// reading.hideContent(isFullScreen, true);
+	reading.music.read(hasMusic, files);
 
 	generateAppMenu();
-
+	
 	shortcuts.register('reading');
 	gamepad.updateBrowsableItems('reading-'+sha1(path));
+	tabs.update();
 }
 
 // Gamepad events
@@ -1561,42 +3269,74 @@ gamepad.setButtonEvent('reading', 1, function(key, button) {
 
 module.exports = {
 	loadIndexPage: loadIndexPage,
+	loadIndexContentLeft: loadIndexContentLeft,
+	loadIndexHeader: loadIndexHeader,
+	indexHeader: indexHeader,
+	headerPath: headerPath,
+	setIndexLabel: setIndexLabel,
+	setPrevIndexLabel: setPrevIndexLabel,
+	prevIndexLabel: function(){return prevIndexLabel},
 	reloadIndex: reloadIndex,
-	loadLanguagesPage: loadLanguagesPage,
+	reload: reload,
+	loadRecentlyOpened: loadRecentlyOpened,
+	loadLanguagePage: loadLanguagePage,
 	loadSettingsPage: loadSettingsPage,
 	loadThemePage: loadThemePage,
 	changeLanguage: changeLanguage,
+	selectMenuItem: selectMenuItem,
 	floatingActionButton: floatingActionButton,
+	setCurrentPageVars: setCurrentPageVars,
 	changeView: changeView,
+	changeViewModuleSize: changeViewModuleSize,
 	changeSort: changeSort,
+	changeBoxes: changeConfig,
+	changeConfig: changeConfig,
 	indexPathControl: indexPathControl,
-	indexPathControlA: function(){return indexPathControlA},
-	indexPathControlGoBack: indexPathControlGoBack,
+	goStartPath: goStartPath,
 	selectElement: selectElement,
 	openComic: openComic,
 	nextComic: function(){return skipNextComic},
 	previousComic: function(){return skipPreviousComic},
+	goNextComic: goNextComic,
+	goPrevComic: goPrevComic,
+	pickAtRandom: pickAtRandom,
 	orderBy: orderBy,
 	nightMode: nightMode,
+	nightModeConfig: nightModeConfig,
 	addComicButtons: addComicButtons,
 	comicContextMenu: comicContextMenu,
 	removeComic: removeComic,
-	calcReadingProgress: calcReadingProgress,
-	calcReadingProgressWD: calcReadingProgressWD,
-	justifyViewModule: justifyViewModule,
+	moveToTrash: moveToTrash,
+	deletePermanently: deletePermanently,
 	compressedError: compressedError,
 	addImageToDom: addImageToDom,
+	addProgressToDom: addProgressToDom,
 	addSepToEnd: addSepToEnd,
-	indexPathControlUpdateLastComic: indexPathControlUpdateLastComic,
-	indexMainPathA: function(){return indexMainPathA},
 	currentPathScrollTop: function(){return currentPathScrollTop},
-	this: function(_this, string = false, querySelectorAll = false) {
-		return new _dom(_this, string, querySelectorAll);
-	},
-	query: function(_this) {
-		return new _dom(_this, true, false);
-	},
-	queryAll: function(_this) {
-		return new _dom(_this, true, true);
-	},
+	getFolderThumbnails: getFolderThumbnails,
+	_getFolderThumbnails: _getFolderThumbnails,
+	translatePageName: translatePageName,
+	metadataPathName: metadataPathName,
+	removePageParam: removePageParam,
+	setWindowTitle: setWindowTitle,
+	fromLibrary: fromLibrary,
+	continueReadingError: continueReadingError,
+	getContentRightScrollTop: getContentRightScrollTop,
+	calculateVisibleItems: calculateVisibleItems,
+	calculateItemsDistribution: calculateItemsDistribution,
+	poster: domPoster,
+	search: search,
+	labels: labels,
+	fileInfo: fileInfo,
+	clearFileCache: clearFileCache,
+	boxes: boxes,
+	header: header,
+	history: history,
+	scroll: scroll,
+	sort: sort,
+	multiSelect: multiSelect,
+	contextMenu: contextMenu,
+	this: domManager.this,
+	query: domManager.query,
+	queryAll: domManager.queryAll,
 };

@@ -5,13 +5,14 @@
 	justify-content: space-between;
 	padding-bottom: 60px;
 	padding: 0px 24px;
+	margin-top: 40px;
 }
 
 .theme-page-item
 {
-	width: calc(50% - 8px);
+	width: calc(25% - 16px);
 	border-radius: 24px;
-	background-color: var(--md-sys-color-surface-container-low);
+	background: var(--md-sys-bg-surface-container-low);
 	transition: 0.2s;
 	margin-bottom: 16px;
 	cursor: pointer;
@@ -19,21 +20,23 @@
 	position: relative;
 }
 
-.theme-page-item:hover
+.theme-page-item:hover,
+.theme-page-item.active
 {
-	background-color: var(--md-sys-color-secondary-container);
+	background: var(--md-sys-bg-secondary-container);
 }
 
 .theme-page-item > div
 {
-	height: 200px;
+	height: 160px;
 	border-radius: 24px 24px 24px 24px;
 	overflow: hidden;
+	background: var(--md-sys-bg-surface-container);
 }
 
 .theme-page-item > div > div
 {
-	height: 200px;
+	height: 160px;
 }
 
 .theme-page-item > div > div > div
@@ -76,4 +79,45 @@
 {
 	opacity: 1;
 	animation: 4s blink normal 1s infinite ease-in-out;
+}
+
+.settings-custom-themes-list .compact-actions
+{
+	width: 100%;
+}
+
+.settings-custom-themes-list .compact-actions-button
+{
+	margin-right: 16px;
+}
+
+.settings-community-themes-list
+{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+	padding: 0px 24px;
+    margin-top: 40px;
+}
+
+.settings-community-themes-list > *
+{
+    flex: 0 0 calc((100% - 60px) / 3);
+}
+
+.settings-community-themes-list .theme-page-item > div
+{
+	height: inherit;
+	aspect-ratio: 16 / 9;
+	overflow: hidden;
+}
+
+.settings-community-themes-list .theme-page-item > div > div
+{
+	height: inherit;
+}
+
+.settings-community-themes-list .theme-page-item > div > div img
+{
+	width: 100%;
 }

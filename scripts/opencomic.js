@@ -9,22 +9,64 @@ window.onerror = function(msg, url, linenumber) {
 
 }*/
 
-document.addEventListener("keydown", event => {
+let isFullScreen = false;
+
+function setFullScreenState(state)
+{
+	isFullScreen = state;
+	titleBar.setFullScreen(state);
+
+	reading.hideContent(state);
+	// win.setMenuBarVisibility(!state);
+
+	const appElement = document.querySelector('body .app');
+	if(appElement) appElement.classList.toggle('full-screen', state);
+
+	handlebarsContext.isFullScreen = isFullScreen;
+}
+
+function fullScreen(force = null, win = false)
+{
+	if(win === false)
+		win = electronRemote.getCurrentWindow();
+
+	if(force === null)
+		force = !win.isFullScreen();
+
+	setFullScreenState(force);
+	win.setFullScreen(force);
+}
+
+function fullScreenEvents()
+{
+	const win = electronRemote.getCurrentWindow();
+
+	win.on('enter-full-screen', function() {
+		setFullScreenState(true);
+	});
+
+	win.on('leave-full-screen', function() {
+		setFullScreenState(false);
+	});
+
+	const state = win.isFullScreen();
+	setFullScreenState(state);
+}
+
+document.addEventListener('keydown', function(event) {
 
 	if(event.key == 'Escape')
 	{
-		let win = electronRemote.getCurrentWindow();
-		let isFullScreen = win.isFullScreen();
+		const win = electronRemote.getCurrentWindow();
+		const isFullScreen = win.isFullScreen();
 
 		if(isFullScreen)
 		{
-			reading.hideContent(false);
-			win.setFullScreen(false);
-			win.setMenuBarVisibility(true);
+			fullScreen(false, win);
 		}
 		else
 		{
-			gamepad.goBack();
+			gamepad.goBack(true);
 		}
 	}
 
@@ -36,7 +78,7 @@ window.addEventListener('error', function(evt) {
 
 	let error = false;
 
-	if(evt.message && !/debug\-evaluate/.test(evt.message))
+	if(evt.message && !/debug\-evaluate/.test(evt.message) && !/client_closed|connect EHOSTUNREACH/iu.test(evt.message))
 		error = 'Error: '+evt.message +' at linenumber '+evt.lineno+':'+evt.colno+' of file '+evt.filename;
 
 	if(error !== false && errorDialog)
@@ -47,7 +89,7 @@ window.addEventListener('error', function(evt) {
 				type: 'error',
 				title: 'Linenumber '+evt.lineno+':'+evt.colno,
 				message: error,
-				detail: evt.error.stack ? evt.error.stack : error,
+				detail: evt?.error?.stack ? evt.error.stack : error,
 			});
 		}
 		else if(evt.filename || evt.lineno || evt.colno)
@@ -61,188 +103,269 @@ window.addEventListener('error', function(evt) {
 const electron = require('electron'),
 	electronRemote = require('@electron/remote'),
 	fs = require('fs'),
+	fsp = fs.promises,
 	fse = require('fs-extra'),
 	hb = require('handlebars'),
 	os = require('os'),
-	ejs = require('electron-json-storage'),
-	mime = require('mime'),
-	sha1 = require('sha1'),
+	crypto = require('crypto'),
 	p = require('path'),
-	anime = require('animejs'),
+	nodeUrl = require('node:url'),
+	isEqual = require('node:util').isDeepStrictEqual,
+	shortWindowsPath = require('short-windows-path'),
 	$ = require('jquery');
 
+$.isArray = Array.isArray; // Fix for jquery-bez
 require('jquery-bez');
 
 //console.timeEnd('Require time 1');
 
-var testVar = 'test';
+
+// Open file and open url logic
+var toOpenFile = toOpenFile || false, windowHasLoaded = false;
+
+function handleOpenFile(path) {
+
+	if(!storage.syncWindows.firstWindow)
+		return;
+
+	if(config.openFilesInNewTab)
+	{
+		openPathInNewTab(path, path);
+		return;
+	}
+	else if(config.openFilesInNewWindow)
+	{
+		openPathInNewWindow(path);
+		return;
+	}
+
+	if(windowHasLoaded)
+		openComic(path, true);
+	else
+		toOpenFile = path;
+
+}
+
+electronRemote.app.on('open-url', function(event, url) {
+
+	// if(!storage.syncWindows.firstWindow)
+	// 	return;
+
+	handleOpenUrl(url);
+
+});
+
+electronRemote.app.on('second-instance', function(event, argv) {
+
+	if(!electronRemote.app.hasSingleInstanceLock())
+		return;
+
+	if(argv.includes('--new-window'))
+		return;
+
+	if(!storage.syncWindows.firstWindow)
+		return;
+
+	const win = electronRemote.getCurrentWindow();
+	if(win.isMinimized()) win.restore();
+	win.focus();
+
+	const len = argv.length;
+	const last = argv[len - 1];
+
+	if(/^opencomic:\/\//.test(last))
+	{
+		handleOpenUrl(last);
+		return;
+	}
+
+	// Get path from command line arguments
+	for(let i = 1; i < len; i++)
+	{
+		const arg = argv[i];
+
+		if(arg && !['--no-sandbox', 'scripts/main.js', '.dist/main.js', '.'].includes(arg) && !/^--/.test(arg) && !/app\.asar/i.test(arg) && fs.existsSync(arg))
+		{
+			if(config.openFilesInNewTab)
+				openPathInNewTab(arg, arg);
+			else if(config.openFilesInNewWindow)
+				openPathInNewWindow(arg);
+			else
+				openComic(arg, true);
+
+			return;
+		}
+	}
+
+	// Get path from --path argument
+	const path = getArgValue(argv, '--path', false);
+
+	if(path && fs.existsSync(path))
+	{
+		const mainPath = getArgValue(argv, '--main-path', false);
+
+		if(config.openFilesInNewTab)
+			openPathInNewTab(path, mainPath || path);
+		else if(config.openFilesInNewWindow)
+			openPathInNewWindow(path, mainPath || '');
+		else
+			openComic(path, true, mainPath);
+
+		return;
+	}
+
+	openEmptyNewWindow();
+
+});
+
+function registreOpenUrl()
+{
+	const process = electronRemote.process;
+
+	if(process.defaultApp)
+	{
+		if(process.argv.length >= 2)
+			electronRemote.app.setAsDefaultProtocolClient('opencomic', process.execPath, [p.resolve(process.argv[1])]);
+	}
+	else
+	{
+		electronRemote.app.setAsDefaultProtocolClient('opencomic');
+	}
+}
+
+function handleOpenUrl(href)
+{
+	const url = new URL(href);
+	if(url.protocol !== 'opencomic:') return;
+
+	switch(url.host)
+	{
+		case 'tracking':
+
+			tracking.handleOpenUrl(url);
+
+			break;
+	}
+}
+
+registreOpenUrl();
 
 var handlebarsContext = {};
 var language = {};
 var config = false, _config = false;
-var onReading = _onReading = false;
+var onReading = false, _onReading = false;
 var readingTouchEvent = false;
+var inChildFork = false;
 
 var appDir = p.join(__dirname, '../');
 
-var _package = $.parseJSON(readFileApp('package.json'));
+var _package = JSON.parse(readFileApp('package.json'));
 
 handlebarsContext.packageJson = _package;
 
-var compatibleMime = [
-	'image/jpeg',
-	'image/pjpeg',
-	'image/png',
-	'image/apng',
-	'image/svg',
-	'image/svg+xml',
-	'image/gif',
-	'image/x-ms-bmp',
-	'image/bmp',
-	'image/x-icon',
-	'image/vnd.microsoft.icon',
-	'image/webp',
-	'image/avif',
-	'image/avif-sequence',
-];
-
-var compressedMime = {
-	'all': [
-		'application/zip',
-		'application/x-cbz',
-		'application/x-zip',
-		'application/x-zip-compressed',
-		'application/rar',
-		'application/x-cbr',
-		'application/x-rar',
-		'application/x-rar-compressed',
-		'application/7z',
-		'application/x-cb7',
-		'application/x-7z',
-		'application/x-7z-compressed',
-		'application/tar',
-		'application/x-cbt',
-		'application/x-tar',
-		'application/x-tar-compressed',
-	],
-	'zip': [
-		'application/zip',
-		'application/x-cbz',
-		'application/x-zip',
-		'application/x-zip-compressed',
-	],
-	'rar': [
-		'application/rar',
-		'application/x-cbr',
-		'application/x-rar',
-		'application/x-rar-compressed',
-	],
-	'7z': [
-		'application/7z',
-		'application/x-cb7',
-		'application/x-7z',
-		'application/x-7z-compressed',
-	],
-	'tar': [
-		'application/tar',
-		'application/x-cbt',
-		'application/x-tar',
-		'application/x-tar-compressed',
-	],
-	'pdf': [
-		'application/pdf',
-		'application/x-bzpdf',
-		'application/x-gzpdf',
-	],
-};
-
-
-var compressedExtensions = {
-	'all': [
-		'zip',
-		'cbz',
-		'rar',
-		'cbr',
-		'7z',
-		'cb7',
-		'tar',
-		'cbt',
-		'pdf',
-	],
-	'zip': [
-		'zip',
-		'cbz',
-	],
-	'rar': [
-		'rar',
-		'cbr',
-	],
-	'7z': [
-		'7z',
-		'cb7',
-	],
-	'tar': [
-		'tar',
-		'cbt',
-	],
-	'pdf': [
-		'pdf',
-	],
-};
-
-var compatibleExtensions = [
-	/*jpeg*/'jpg', 'jpeg', 'jif', 'jfi', 'jfif', 'jfif-tbnl', 'jpe', 
-	/*png*/'png', 'x-png', 'apng',
-	/*svg*/'svg', 'svgz',
-	/*gif*/'gif',
-	/*bmp*/'bmp', 'dib',
-	/*ico*/'ico',
-	/*webp*/'webp',
-	/*avif*/'avif', 'avifs',
-	/*compressed*/'zip', 'cbz', 'rar', 'cbr', '7z', 'cb7', 'tar', 'cbt', 'pdf',
-];
-
-var compatibleSpecialExtensions = [
-	'tbn',
-];
-
 //console.time('Require time 2');
 
-const app = require(p.join(appDir, 'scripts/app.js')),
-	storage = require(p.join(appDir, 'scripts/storage.js')),
-	cache = require(p.join(appDir, 'scripts/cache.js')),
-	queue = require(p.join(appDir, 'scripts/queue.js')),
-	templates = require(p.join(appDir, 'scripts/builded/templates.js')),
-	template = require(p.join(appDir, 'scripts/template.js')),
-	gamepad = require(p.join(appDir, 'scripts/gamepad.js')),
-	dom = require(p.join(appDir, 'scripts/dom.js')),
-	events = require(p.join(appDir, 'scripts/events.js')),
-	fileManager = require(p.join(appDir, 'scripts/file-manager.js')), // New file management
-	reading = require(p.join(appDir, 'scripts/reading.js')),
-	settings = require(p.join(appDir, 'scripts/settings.js')),
-	theme = require(p.join(appDir, 'scripts/theme.js')),
-	dragAndDrop = require(p.join(appDir, 'scripts/drag-and-drop.js')),
-	checkReleases = require(p.join(appDir, 'scripts/check-releases.js')),
-	shortcuts = require(p.join(appDir, 'scripts/shortcuts.js')),
-	tracking = require(p.join(appDir, 'scripts/tracking.js')),
-	trackingSites = require(p.join(appDir, 'scripts/tracking/tracking-sites.js'));
+const folderPortable = require(p.join(appDir, '.dist/folder-portable.js'));
+var storagePath = p.join(electronRemote.app.getPath('userData'), 'storage');
 
-var tempFolder = p.join(os.tmpdir(), 'opencomic');
-if(!fs.existsSync(tempFolder)) fs.mkdirSync(tempFolder);
+if(folderPortable.check())
+{
+	const executableDir = process.env.OPENCOMIC_PORTABLE_EXECUTABLE_DIR || process.env.PORTABLE_EXECUTABLE_DIR;
 
-fileManager.removeTmpVector();
+	if(executableDir)
+	{
+		storagePath = p.join(executableDir, 'opencomic', 'storage');
+	}
+	else
+	{
+		const outsidePath = p.join(__dirname, '../../../../', 'opencomic');
+
+		if(fs.existsSync(outsidePath))
+			storagePath = p.join(outsidePath, 'storage');
+		else
+			storagePath = p.join(__dirname, '../../../', 'storage');
+	}
+}
+
+const isWayland = process.platform === 'linux' && process.env.XDG_SESSION_TYPE === 'wayland';
+const useScreenPointTabs = !isWayland;
+
+const app = require(p.join(appDir, '.dist/app.js')),
+	installedFromStore = require(p.join(appDir, '.dist/installed-from-store.js')),
+	nightly = require(p.join(appDir, '.dist/nightly.js')),
+	relative = require(p.join(appDir, '.dist/relative.js')),
+	storage = require(p.join(appDir, '.dist/storage.js')),
+	compatible = require(p.join(appDir, '.dist/compatible.js')),
+	image = require(p.join(appDir, '.dist/image.js')),
+	settings = require(p.join(appDir, '.dist/settings.js')),
+	cache = require(p.join(appDir, '.dist/cache.js')),
+	templates = require(p.join(appDir, '.dist/builded/templates.js')),
+	template = require(p.join(appDir, '.dist/template.js')),
+	titleBar = require(p.join(appDir, '.dist/title-bar.js')),
+	tabs = require(p.join(appDir, '.dist/tabs.mjs')).default,
+	gamepad = require(p.join(appDir, '.dist/gamepad.js')),
+	dom = require(p.join(appDir, '.dist/dom.js')),
+	events = require(p.join(appDir, '.dist/events.js')),
+	ebook = require(p.join(appDir, '.dist/ebook.js')),
+	workers = require(p.join(appDir, '.dist/workers.js')),
+	childFork = require(p.join(appDir, '.dist/child-fork.js')),
+	threads = require(p.join(appDir, '.dist/threads.js')),
+	mutex = require(p.join(appDir, '.dist/mutex.js')),
+	fileManager = require(p.join(appDir, '.dist/file-manager.js')),
+	serverClient = require(p.join(appDir, '.dist/server-client.js')),
+	opds = require(p.join(appDir, '.dist/opds.js')),
+	reading = require(p.join(appDir, '.dist/reading.js')),
+	recentlyOpened = require(p.join(appDir, '.dist/recently-opened.js')),
+	theme = require(p.join(appDir, '.dist/theme.js')),
+	themeVars = require(p.join(appDir, '.dist/theme-vars.mjs')).default,
+	dragAndDrop = require(p.join(appDir, '.dist/drag-and-drop.js')),
+	checkReleases = require(p.join(appDir, '.dist/check-releases.js')),
+	shortcuts = require(p.join(appDir, '.dist/shortcuts.js')),
+	tracking = require(p.join(appDir, '.dist/tracking.js')),
+	trackingSites = require(p.join(appDir, '.dist/tracking/tracking-sites.js')),
+	languageTerms = require(p.join(appDir, '.dist/language-terms.mjs')).default;
+
+var tempFolder = settings.getTmpFolder();
+var macosMAS = false;
+
+macosMAS = (installedFromStore.check() && process.platform == 'darwin') ? true : false;
 
 //console.timeEnd('Require time 2');
 
 var fromGamepad = false;
 
-window.onload = function() {
+var appBaseLoadedResolve;
+var appBaseLoaded = new Promise(function(resolve) {
+
+	appBaseLoadedResolve = resolve;
+
+});
+
+async function start()
+{
+	await electronRemote.app.whenReady();
 
 	storage.start(function() {
 
-		config = storage.get('config');
-		_config = copy(config);
+		config = storage.config();
+		_config = app.copy(config);
+
+		// Show tabs bar always on all devices
+		config.showAlwaysTabsBar = true;
+
+		const OS_MAP = {
+			linux: 'linux',
+			win32: 'windows',
+			darwin: 'macos',
+		};
+
 		handlebarsContext.config = config;
+		handlebarsContext.installedFromStore = installedFromStore.check();
+		handlebarsContext.os = OS_MAP[process.platform] || process.platform;
+		handlebarsContext.macosMAS = macosMAS;
+		handlebarsContext.macos = process.platform == 'darwin';
+		handlebarsContext.isWayland = isWayland;
+		handlebarsContext.useScreenPointTabs = useScreenPointTabs;
 
 		if(config.zoomFactor != 1)
 			electron.webFrame.setZoomFactor(Math.round(config.zoomFactor * 100) / 100);
@@ -250,29 +373,209 @@ window.onload = function() {
 		loadLanguage(config.language);
 
 		template.loadInQuery('body', 'body.html');
+		theme.systemNightMode();
+		theme.loadCustomThemes();
 
+		titleBar.start();
+		titleBar.getColors();
+
+		appBaseLoadedResolve();
 		startApp();
 
-	});
+		titleBar.setColors();
 
+	});
 }
 
-function startApp()
+function getArgValue(argv, flag, defaultValue = null)
+{
+	const arg = argv.find(a => a.startsWith(flag+'='));
+	if(!arg) return defaultValue;
+	return arg.slice(flag.length + 1);
+}
+
+let initHistory = false;
+let initWindowId = false;
+
+electron.ipcRenderer.on('init-data', function(event, data) {
+
+	if(data.history)
+	{
+		dom.history.load(data.history);
+		initHistory = data.history;
+
+		loadFromHistory();
+	}
+
+	if(data.windowId)
+	{
+		initWindowId = data.windowId;
+		loadFromWindowId();
+	}
+
+});
+
+let fromStartApp = false;
+let emptyNewWindow = false;
+
+async function loadFromHistory()
+{
+	if(fromStartApp && initHistory)
+	{
+		dom.history.load(initHistory);
+		await dom.history.goTo(initHistory.current, false);
+	}
+}
+
+async function loadFromWindowId()
+{
+	if(fromStartApp && initWindowId)
+	{
+		tabs.start(true, true, initWindowId);
+	}
+}
+
+async function startApp()
 {
 	if(config.checkReleases)
 		checkReleases.check();
 
-	template.loadContentRight('index.content.right.module.html', false);
-	template.loadHeader('index.header.html', false);
-	template.loadContentLeft('index.content.left.html', false);
-	template.loadGlobalElement('index.elements.menus.html', 'menus');
+	fullScreenEvents();
+	loadContextMenu();
 
-	if(electronRemote.process.argv && electronRemote.process.argv[1] && !inArray(electronRemote.process.argv[1], ['--no-sandbox', 'scripts/main.js', '.']) && fs.existsSync(electronRemote.process.argv[1]))
-		openComic(electronRemote.process.argv[1], false);
+	handlebarsContext.indexHeaderTitle = language.global.library;
+
+	template.loadContentRight('index.content.right.empty.html', false);
+	template.loadHeader('index.header.html', false);
+	template.loadGlobalElement('global.elements.menus.html', 'global-menus');
+	template.loadGlobalElement('index.elements.menus.html', 'menus');
+	dom.loadIndexContentLeft(false);
+
+	const args = [...process.argv, ...electronRemote.process.argv];
+
+	emptyNewWindow = args.includes('--empty-new-window');
+	let toOpenFileMainPath = getArgValue(args, '--main-path', false);
+	toOpenFile = toOpenFile || getArgValue(args, '--path', false);
+
+	const initHistoryArg = getArgValue(args, '--init-history', false);
+	const initWindowIdArg = getArgValue(args, '--init-window-id', false);
+	
+	if(!toOpenFile)
+	{
+		for(let i = 1, len = electronRemote.process.argv.length; i < len; i++)
+		{
+			const arg = electronRemote.process.argv[i];
+
+			if(arg && !['--no-sandbox', 'scripts/main.js', '.dist/main.js', '.'].includes(arg) && !/^--/.test(arg) && !/app\.asar/i.test(arg) && fs.existsSync(arg))
+			{
+				toOpenFile = arg;
+				break;
+			}
+		}
+	}
+
+	if(initWindowIdArg)
+	{
+		fromStartApp = true;
+		loadFromWindowId();
+	}
+	else if(initHistoryArg)
+	{
+		fromStartApp = true;
+		tabs.start(false, false);
+		loadFromHistory();
+	}
+	else if(toOpenFile && fs.existsSync(toOpenFile))
+	{
+		tabs.start(false, !toOpenFileMainPath);
+
+		openComic(toOpenFile, false, toOpenFileMainPath);
+	}
 	else
-		dom.loadIndexPage(false);
+	{
+		tabs.start(true);
+
+		let lastReading = false;
+
+		if(config.startInContinueReading && !emptyNewWindow)
+		{
+			let readingProgress = relative.get('readingProgress');
+			let highest = 0;
+
+			for(let key in readingProgress)
+			{
+				if(readingProgress[key].lastReading > highest)
+				{
+					lastReading = {
+						mainPath: key,
+						path: readingProgress[key].path,
+					};
+
+					highest = readingProgress[key].lastReading;
+				}
+			}
+
+			if(lastReading && config.startOnlyFromLibrary)
+			{
+				let mainPaths = {};
+
+				// Comics in master folders
+				let masterFolders = relative.get('masterFolders');
+
+				if(!isEmpty(masterFolders))
+				{
+					for(let key in masterFolders)
+					{
+						const path = masterFolders[key];
+
+						if(fs.existsSync(path))
+						{
+							let file = fileManager.file(path);
+							let files = await file.readDir();
+							file.destroy();
+
+							for(let i = 0, len = files.length; i < len; i++)
+							{
+								let folder = files[i];
+
+								if(folder.folder || folder.compressed)
+									mainPaths[folder.path] = true;
+							}
+						}
+					}
+				}
+
+				// Comics in library
+				let comicsStorage = relative.get('comics');
+
+				if(!isEmpty(comicsStorage))
+				{
+					for(let key in comicsStorage)
+					{
+						const path = comicsStorage[key].path;
+						mainPaths[path] = true;
+					}
+				}
+
+				if(!mainPaths[lastReading.mainPath])
+					lastReading = false;
+			}
+		}
+
+		if(emptyNewWindow || !config.restoreTabsFromLastSession || tabs.initEmptyTabs || !tabs?.tabs?.length || (tabs.tabs.length === 1 && !config.showAlwaysTabsBar))
+		{
+			if(lastReading && fs.existsSync(lastReading.mainPath))
+				dom.openComic(false, lastReading.path, lastReading.mainPath);
+			else
+				dom.loadIndexPage(false);
+		}
+	}
 
 	dragAndDrop.start();
+	dom.search.start();
+	dom.multiSelect.init();
+	tracking.start();
+	fileManager.diskType.findDisks();
 
 	document.fonts.ready.then(function(){
 
@@ -282,56 +585,248 @@ function startApp()
 			let isFullScreen = win.isFullScreen();
 
 			if(!isFullScreen)
-			{
-				reading.hideContent(true);
-				win.setFullScreen(true);
-				win.setMenuBarVisibility(false);
-			}
+				fullScreen(true, win);
 		}
 
 		$('body .app').css('display', 'block');
 		$('body .preload').css('display', 'none');
-		dom.justifyViewModule();
 
-		if(onReading)
+		if(onReading && reading.isLoaded() && !reading.isEbook())
 		{
-			reading.disposeImages();
-			reading.calculateView();
-			reading.stayInLine();
+			reading.view.disposeImages();
+			reading.view.calculateView();
+			reading.view.stayInLine.recalculate();
 		}
 
 	});
 
+	windowHasLoaded = true;
+	fileManager.onAppInitialized();
+
 }
+
+// Open new instance not woking on macOS Sandboxed app
+function openNewInstance(args = [])
+{
+	const {spawn} = require('child_process');
+	const appPath = electronRemote.app.getPath('exe');
+
+	if(!electronRemote.app.isPackaged)
+	{
+		if(process.platform === 'linux')
+			args.push('--no-sandbox');
+
+		// args.unshift('scripts/main.js');
+		args.unshift('.dist/main.js');
+	}
+
+	console.log('Opening new instance with args:', appPath, args);
+
+	const child = spawn(appPath, args, {
+		detached: true,
+		stdio: 'ignore',
+	});
+
+	child.unref();
+}
+
+async function openNewWindow(args = [], options = {})
+{
+	options = {
+		args,
+		...options,
+	};
+
+	console.log('Opening new window with options:', options);
+	return await electron.ipcRenderer.invoke('open-new-window', options);
+}
+
+async function openPathInNewWindow(path, mainPath = '', history = null, options = {})
+{
+	const {x, y, width, height} = electronRemote.getCurrentWindow().getBounds();
+	const args = ['--path='+path, '--new-window', '--window-x='+x, '--window-y='+y, '--window-width='+width, '--window-height='+height, '--main-path='+mainPath, '--init-history=true']
+
+	if(!history)
+	{
+		history = dom.history.serialize();
+
+		const file = p.basename(path);
+
+		const data = {
+			file: file,
+			indexLabel: {},
+			isComic: compatible.image(path),
+			mainPath: mainPath,
+			path: path,
+		};
+
+		history.current = data;
+		history.forwardHistory = [];
+		history.history = [...history.history, data];
+	}
+
+	return await openNewWindow(args, {initHistory: history, ...options});
+}
+
+async function openEmptyNewWindow()
+{
+	const {x, y, width, height} = electronRemote.getCurrentWindow().getBounds();
+	const args = ['--empty-new-window', '--new-window', '--window-x='+x, '--window-y='+y, '--window-width='+width, '--window-height='+height]; 
+	return await openNewWindow(args, {});
+}
+
+async function restoreWindow(windowId)
+{
+	const {x, y, width, height} = electronRemote.getCurrentWindow().getBounds();
+	const args = ['--empty-new-window', '--new-window', '--window-x='+x, '--window-y='+y, '--window-width='+width, '--window-height='+height, '--init-window-id=true'];
+	return await openNewWindow(args, {initWindowId: windowId});
+}
+
+function openPathInNewTab(path, mainPath = '')
+{
+	const tab = tabs.getByPath(path);
+
+	if(tab)
+	{
+		tabs.switch(tab.id);
+	}
+	else
+	{
+		const tabId = tabs.openPath(path, mainPath);
+		tabs.switch(tabId);
+	}
+}
+
+var currentContextMenuInput = false;
+
+async function loadContextMenu()
+{
+	electronRemote.getCurrentWindow().webContents.on('context-menu', function(event, props) {
+
+		currentContextMenuInput = document.activeElement;
+
+		if(props.isEditable)
+			events.activeContextMenu('#global-input-menu');
+		else if(props.selectionText && props.selectionText.trim() !== '')
+			events.activeContextMenu('#global-selection-menu');
+
+	});
+}
+
+var importPromises = {};
 
 var ShoSho = false;
 
 async function loadShoSho()
 {
+	if(importPromises.ShoSho) return importPromises.ShoSho;
 	if(ShoSho) return;
 
-	ShoSho = await import(asarToAsarUnpacked(p.join(appDir, 'node_modules/shosho/dist/index.js')));
-	ShoSho = ShoSho.default;
+	importPromises.ShoSho = new Promise(async function(resolve){
 
-	return true;
+		ShoSho = await import(nodeUrl.pathToFileURL(asarToAsarUnpacked(p.join(appDir, 'node_modules/shosho/dist/index.js'))).href);
+		ShoSho = ShoSho.default;
+
+		resolve();
+
+		importPromises.ShoSho = false;
+
+	});
+
+	return importPromises.ShoSho;
+}
+
+var unpdf = false;
+
+async function loadPdfjs()
+{
+	if(importPromises.unpdf) return importPromises.unpdf;
+	if(unpdf) return;
+
+	importPromises.unpdf = new Promise(async function(resolve){
+
+		unpdf = await import(nodeUrl.pathToFileURL(asarToAsarUnpacked(p.join(appDir, 'node_modules/pdfjs-dist/build/pdf.mjs'))).href);
+		unpdf.GlobalWorkerOptions.workerSrc = asarToAsarUnpacked(p.join(appDir, 'node_modules/pdfjs-dist/build/pdf.worker.mjs'));
+
+		resolve();
+
+		importPromises.unpdf = false;
+
+	});
+
+	return importPromises.unpdf;
+
+}
+
+var pdfjsDecoders = false;
+
+async function loadPdfjsDecoders()
+{
+	if(importPromises.pdfjsDecoders) return importPromises.pdfjsDecoders;
+	if(pdfjsDecoders) return;
+
+	importPromises.pdfjsDecoders = new Promise(async function(resolve){
+
+		pdfjsDecoders = await import(nodeUrl.pathToFileURL(asarToAsarUnpacked(p.join(__dirname, '..', 'node_modules/pdfjs-dist/image_decoders/pdf.image_decoders.mjs'))).href);
+
+		pdfjsDecoders.JpxImage.setOptions({
+			useWasm: true,
+			useWorkerFetch: true,
+			wasmUrl: fileManager.posixPath(asarToAsarUnpacked(p.join(appDir, 'node_modules/pdfjs-dist/wasm/'))),
+		});
+
+		resolve();
+
+		importPromises.pdfjsDecoders = false;
+
+	});
+
+	return importPromises.pdfjsDecoders;
+
+}
+
+var foliateJs = {};
+
+async function loadFoliateJs()
+{
+	if(importPromises.foliateJs) return importPromises.foliateJs;
+	if(foliateJs.opds) return;
+
+	importPromises.foliateJs = new Promise(async function(resolve){
+
+		foliateJs.opds = await import(nodeUrl.pathToFileURL(asarToAsarUnpacked(p.join(__dirname, '..', 'node_modules/foliate-js/opds.js'))).href);
+
+		resolve();
+
+		importPromises.foliateJs = false;
+
+	});
+
+	return importPromises.foliateJs;
+}
+
+async function loadWebdav()
+{
+	let webdav = await import(nodeUrl.pathToFileURL(asarToAsarUnpacked(p.join(appDir, 'node_modules/webdav/dist/web/index.js'))).href);
+	return webdav;
 }
 
 /*Global functions*/
 
-function copy(data) {
-
-	return JSON.parse(JSON.stringify(data));
-
-}
-
 function inArray(string, array)
 {
-	return (array.indexOf(string) != -1) ? true : false;
+	return array.includes(string) ? true : false;
 }
 
-function fileExtension(path)
+function removeElements(array1, array2)
 {
-	return p.extname(path).replace(/^\./, '').toLowerCase();
+    const set2 = new Set(array2);
+    return array1.filter(element => !set2.has(element));
+}
+
+function fastJoin(path1, path2)
+{
+	return path1.replace(/[\/\\]$/, '')+p.sep+path2.replace(/^[\/\\]/, '');
 }
 
 function pregQuote(str, delimiter = false)
@@ -402,7 +897,7 @@ function loadLanguageMD(hbc, obj)
 
 			loadLanguageMD(hbc[key], obj[key]);
 		}
-		else
+		else if(obj[key])
 		{
 			hbc[key] = obj[key];
 		}
@@ -414,16 +909,30 @@ function time()
 	return Math.floor(Date.now() / 1000);
 }
 
+const shaCache = {};
+
+function sha1(string)
+{
+	if(string.length > 1000)
+		return crypto.hash('sha1', string, 'hex');
+	else if(shaCache[string])
+		return shaCache[string];
+
+	return shaCache[string] = crypto.hash('sha1', string, 'hex');
+}
+
 function loadLanguage(lan = false)
 {
-	language = $.parseJSON(readFileApp('./languages/es.json'));
-	loadLanguageMD(language, $.parseJSON(readFileApp('./languages/en.json')));
+	language = JSON.parse(readFileApp('./languages/es.json'));
+	language.terms = languageTerms;
+
+	loadLanguageMD(language, JSON.parse(readFileApp('./languages/en.json')));
 
 	handlebarsContext.language = language;
 
 	if(lan && existsFileApp('./languages/'+lan+'.json'))
 	{
-		loadLanguageMD(language, $.parseJSON(readFileApp('./languages/'+lan+'.json')));
+		loadLanguageMD(language, JSON.parse(readFileApp('./languages/'+lan+'.json')));
 
 		generateAppMenu(true);
 		generateAppMenuShortcut();
@@ -432,9 +941,9 @@ function loadLanguage(lan = false)
 
 function asarToAsarUnpacked(path)
 {
-	if(!/app\.asar\.unpacked/.test(path))
+	if(!/app(-(?:arm64|x64))?\.asar\.unpacked/.test(path))
 	{
-		var pathUnpacked = path.replace(/app\.asar/, 'app.asar.unpacked');
+		var pathUnpacked = path.replace(/app(-(?:arm64|x64))?\.asar/, 'app$1.asar.unpacked');
 
 		if(fs.existsSync(pathUnpacked)) path = pathUnpacked;
 	}
@@ -462,7 +971,7 @@ function zoomIn()
 	else if(factor < 0.50)
 		factor = 0.50;
 
-	storage.updateVar('config', 'zoomFactor', factor);
+	storage.setKey('config', 'zoomFactor', factor);
 
 	electron.webFrame.setZoomFactor(Math.round(factor * 100) / 100);
 }
@@ -487,14 +996,14 @@ function zoomOut()
 	else if(factor < 0.50)
 		factor = 0.50;
 
-	storage.updateVar('config', 'zoomFactor', factor);
+	storage.setKey('config', 'zoomFactor', factor);
 
 	electron.webFrame.setZoomFactor(Math.round(factor * 100) / 100);
 }
 
 function resetZoom()
 {
-	storage.updateVar('config', 'zoomFactor', 1);
+	storage.setKey('config', 'zoomFactor', 1);
 
 	electron.webFrame.setZoomLevel(0);
 }
@@ -516,10 +1025,17 @@ var generateAppMenuData = {resetZoom: null, onReading: null};
 
 function generateAppMenu(force = false)
 {
-	if(force || generateAppMenuData.resetZoom !== electron.webFrame.getZoomFactor() || generateAppMenuData.onReading !== onReading)
+	const indexPath = dom.history.path;
+
+	if(force || generateAppMenuData.resetZoom !== electron.webFrame.getZoomFactor() || generateAppMenuData.onReading !== onReading || generateAppMenuData.indexPath !== indexPath)
 	{
 		let currentWindow = electronRemote.getCurrentWindow();
-		generateAppMenuData = {resetZoom: electron.webFrame.getZoomFactor(), onReading: onReading};
+		generateAppMenuData = {resetZoom: electron.webFrame.getZoomFactor(), onReading: onReading, indexPath: indexPath};
+
+		let currentPath = onReading ? reading.readingCurrentPath() : indexPath;
+		let pathIsFolder = (currentPath && fs.existsSync(currentPath) && fs.statSync(currentPath).isDirectory()) ? true : false;
+
+		const recentWindows = storage.get('recentWindows') || [];
 
 		var menuTemplate = [
 			{
@@ -530,7 +1046,48 @@ function generateAppMenu(force = false)
 					{label: language.menu.file.addFile, click: function(){addComic()}},
 					{label: language.menu.file.addFolder, click: function(){addComic(true)}},
 					{type: 'separator'},
-					{role: 'quit', label: language.menu.file.quit},
+					{
+						label: language.menu.file.recentWindows,
+						submenu: recentWindows.map(function(window) {
+
+							const activeTab = window.list.find(tab => tab.active);
+							const title = activeTab ? activeTab.title : 'Untitled';
+							const maxLength = 50;
+
+							const segments = [...new Intl.Segmenter(undefined, {
+								granularity: 'grapheme',
+							}).segment(title)];
+
+							const label = segments.length > maxLength ? segments.slice(0, maxLength - 1).map(segment => segment.segment).join('') + '...' : title;
+
+							const date = new Date(window.date).toLocaleString(undefined, {
+								day: '2-digit',
+								month: '2-digit',
+								year: '2-digit',
+								hour: '2-digit',
+								minute: '2-digit',
+							});
+
+							const sublabel = `${hb.compile(language.menu.file.tabsNum)({num: window.list.length})} · ${date}`;
+
+							return {
+								label: label,
+								sublabel: sublabel,
+								click: function() {
+									restoreWindow(window.id);
+								},
+								enabled: true,
+							};
+
+						}),
+						enabled: recentWindows.length > 0
+					},
+					{type: 'separator'},
+					{label: language.global.labels, enabled: currentPath, click: function(){reading.contextMenu.labels()}},
+					{label: pathIsFolder ? language.global.contextMenu.openFolderLocation : language.global.contextMenu.openFileLocation, enabled: currentPath, click: function(){reading.contextMenu.openFileLocation()}},
+					{label: language.global.contextMenu.aboutFile, enabled: currentPath, click: function(){reading.contextMenu.aboutFile()}},
+					{type: 'separator'},
+					{role: 'quit', label: language.menu.file.quit, click: function(){electronRemote.app.quit();}},
 				]
 			},
 			{
@@ -541,30 +1098,34 @@ function generateAppMenu(force = false)
 					{label: language.menu.view.zoomIn, click: function(){zoomIn(); generateAppMenu();}, accelerator: 'CmdOrCtrl+=', visible: false, acceleratorWorksWhenHidden: true},
 					{label: language.menu.view.zoomOut, click: function(){zoomOut(); generateAppMenu();}, accelerator: 'CmdOrCtrl+-'},
 					{type: 'separator'},
-					{label: language.menu.view.toggleFullScreen, click: function(){var win = electronRemote.getCurrentWindow(); reading.hideContent(!win.isFullScreen()); win.setFullScreen(!win.isFullScreen()); win.setMenuBarVisibility(!win.isFullScreen());}, accelerator: 'F11'},
+					{label: language.menu.view.toggleFullScreen, click: function(){fullScreen();}, accelerator: 'F11'},
 				]
 			},
 			{
 				label: language.menu.goto.main,
 				submenu: [
-					{label: language.reading.firstPage, enabled: onReading, click: function(){reading.goStart();}, accelerator: 'Home'},
-					{label: language.reading.previous, enabled: onReading, click: function(){reading.goPrevious();}, accelerator: 'Backspace'},
-					{label: language.reading.next, enabled: onReading, click: function(){reading.goNext();}, accelerator: 'Space'},
-					{label: language.reading.lastPage, enabled: onReading, click: function(){reading.goEnd();}, accelerator: 'End'},
-					{label: 'Next chapter', enabled: onReading, click: function(){reading.goEnd();}, accelerator: 'Ctrl+End'},
+					{label: language.reading.firstPage, enabled: onReading, click: function(){reading.goStart();}},
+					{label: language.reading.previous, enabled: onReading, click: function(){reading.goPrevious();}},
+					{label: language.reading.next, enabled: onReading, click: function(){reading.goNext();}},
+					{label: language.reading.lastPage, enabled: onReading, click: function(){reading.goEnd();}},
+					// {label: 'Next chapter', enabled: onReading, click: function(){reading.goEnd();}, accelerator: 'Ctrl+End'},
 				]
 			},
 			{
 				label: language.menu.debug.main,
 				submenu: [
-					{role: 'reload', label: language.menu.debug.reload},
-					{role: 'forceReload', label: language.menu.debug.forceReload},
-					{role: 'toggleDevTools', label: language.menu.debug.toggleDevTools},
+					{label: language.menu.debug.reload, click: async function(){await prevToReload(); electronRemote.getCurrentWindow().webContents.reload();}, accelerator: 'CmdOrCtrl+R'},
+					{label: language.menu.debug.forceReload, click: async function(){await prevToReload(); electronRemote.getCurrentWindow().webContents.reloadIgnoringCache();}, accelerator: 'CmdOrCtrl+Shift+R'},
+					{label: language.menu.debug.toggleDevTools, click: function(){electronRemote.getCurrentWindow().webContents.toggleDevTools();}, accelerator: 'CmdOrCtrl+Shift+I'},
 				]
 			},
 			{
 				label: language.menu.help.main,
 				submenu: [
+					{label: language.menu.help.bug, click: function(){electron.shell.openExternal('https://github.com/ollm/OpenComic/issues');}},
+					{label: language.menu.help.guides, click: function(){electron.shell.openExternal('https://opencomic.app/docs/category/guides');}},
+					{type: 'separator'},
+					{label: language.menu.help.funding, click: function(){electron.shell.openExternal('https://opencomic.app/docs/donate');}, visible: !macosMAS},
 					{label: language.menu.help.about, click: function(){showAboutWindow();}},
 				]
 			}
@@ -572,23 +1133,31 @@ function generateAppMenu(force = false)
 
 		var menu = electronRemote.Menu.buildFromTemplate(menuTemplate);
 		currentWindow.setMenu(menu);
-		// currentWindow.setMenuBarVisibility(false);
+
+		if(process.platform == 'darwin')
+		{
+			electronRemote.Menu.setApplicationMenu(menu);
+		}
+		else
+		{
+			currentWindow.setMenuBarVisibility(false);
+		}
+		
+		titleBar.setMenu(menuTemplate);
 	}
 }
 
-var about = false;
-
 function showAboutWindow()
 {
-	var about = new electronRemote.BrowserWindow({
+	const about = new electronRemote.BrowserWindow({
 		show: false,
 		title: language.menu.help.about,
-		width: 380,
-		height: 260,
+		width: 900,
+		height: 600,
 		minWidth: 380,
 		minHeight: 260,
 		//resizable: false,
-		modal: true,
+		modal: (process.platform == 'darwin') ? false : true,
 		parent: electronRemote.getCurrentWindow(),
 		webPreferences: {
 			contextIsolation: false,
@@ -597,16 +1166,53 @@ function showAboutWindow()
 		},
 	});
 
+	const packageLock = require(p.join(appDir, '.dist/builded/package-lock.js'));
+	const highlight = [
+		'electron',
+		'sharp',
+		'pdfjs-dist',
+		'7zip-native',
+	];
+
+	const allDependencies = {
+		'electron': '',
+		..._package.dependencies,
+		..._package.devDependencies
+	};
+	const dependencies = [];
+
+	for(let key in allDependencies)
+	{
+		allDependencies[key] = packageLock[key] ?? packageLock['node_modules/'+key] ?? allDependencies[key];
+
+		if(!highlight.includes(key))
+			dependencies.push({package: key, version: allDependencies[key]});
+	}
+
+	const highlightDependencies = [];
+
+	for(let i = 0, len = highlight.length; i < len; i++)
+	{
+		const key = highlight[i];
+		highlightDependencies.push({package: key, version: allDependencies[key]});
+	}
+
+	handlebarsContext.highlightDependencies = highlightDependencies;
+	handlebarsContext.dependencies = dependencies;
+	handlebarsContext.nightly = nightly;
+
 	about.removeMenu();
 	about.setMenuBarVisibility(false);
 
-	var url = require('url');
+	const url = require('url');
 
 	about.loadURL(url.format({
 		pathname: p.join(appDir, './templates/about.html'),
 		protocol: 'file:',
 		slashes: true
 	}));
+
+	// about.webContents.openDevTools();
 
 	about.once('ready-to-show', function() {
 	
@@ -619,33 +1225,77 @@ function showAboutWindow()
 	});
 }
 
-function removeTemporaryFiles()
+function showBlobInternals()
 {
-	try
-	{
-		fse.emptyDirSync(tempFolder);
-	}
-	catch(error)
-	{
-		console.error(error);
-	}
+	const win = new electronRemote.BrowserWindow({
+		webPreferences: {
+			nodeIntegration: false,
+			contextIsolation: true,
+		}
+	});
+
+	win.loadURL('chrome://blob-internals/');
+}
+
+function printMemoryUsage()
+{
+	const memoryUsage = process.memoryUsage();
+	const memory = performance.memory;
+
+	const toGB = (bytes) => (bytes / (1024 ** 3)).toFixed(2);
+
+	let message = '';
+
+	message += 'RSS: '+toGB(memoryUsage.rss)+'GB\n';
+	message += 'Heap Total: '+toGB(memoryUsage.heapTotal)+'GB\n';
+	message += 'Heap Used: '+toGB(memoryUsage.heapUsed)+'GB\n';
+	message += 'External: '+toGB(memoryUsage.external)+'GB\n';
+	message += 'Array Buffers: '+toGB(memoryUsage.arrayBuffers)+'GB\n';
+	message += '-----\n';
+	message += 'Total JS Heap Size: '+toGB(memory.totalJSHeapSize)+'GB\n';
+	message += 'Used JS Heap Size: '+toGB(memory.usedJSHeapSize)+'GB\n';
+
+	console.log('');
+	console.log('Memory usage');
+	console.log(message);
+}
+
+function reload()
+{
+	electronRemote.getCurrentWindow().webContents.reload();
+}
+
+async function prevToReload()
+{
+	console.log('prevToReload');
+	const saved = reading.progress.save();
+	tabs.restore.save(false, true);
+	// settings.purgeTemporaryFiles();
+	// cache.purge();
+	ebook.closeAllRenders();
+	workers.closeAllWorkers();
+	// storage.backup.save();
+	// storage.purgeOldAtomic();
+
+	await app.sleep(100);
 }
 
 function escapeBackSlash(string)
 {
-	return string.replace(/\\+/g, '\\\\');
+	return (string || '').replace(/\\/g, '\\\\');
 }
 
 function invertBackslash(string)
 {
-	return string.replace(/\\+/g, '/');
+	return (string || '').replace(/\\+/g, '/');
 }
 
 function encodeSrcURI(string)
 {
-	let segments = string.split(p.sep);
+	const vars = string.split('?');
+	const segments = fileManager.splitPath(vars[0] ?? '');
 
-	for(let i in segments)
+	for(let i = 0, len = segments.length; i < len; i++)
 	{
 		if(i != 0)
 			segments[i] = encodeURIComponent(segments[i]);
@@ -653,7 +1303,7 @@ function encodeSrcURI(string)
 			segments[i] = segments[i];
 	}
 
-	return segments.join(p.sep);
+	return segments.join(p.sep)+(vars[1] ? '?'+vars[1] : '');
 }
 
 function toUnixPath(string)
@@ -733,9 +1383,11 @@ function callbackString(callback)
 
 hb.registerHelper('chain', function() {
 
-	var helpers = [], value;
+	let helpers = [], value;
 
-	$.each(arguments, function (i, arg) {
+	for(let i = 0, len = arguments.length; i < len; i++)
+	{
+		const arg = arguments[i];
 
 		if(hb.helpers[arg])
 		{
@@ -745,13 +1397,15 @@ hb.registerHelper('chain', function() {
 		{
 			value = arg;
 
-			$.each(helpers, function (j, helper) {
+			for(let j = 0, len = helpers.length; j < len; j++)
+			{
+				const helper = helpers[j];
 				value = helper(value, arguments[i + 1]);
-			});
+			}
 
-			return false;
+			break;
 		}
-	});
+	}
 
 	return value;
 });
@@ -779,6 +1433,20 @@ hb.registerHelper('compare', function(lvalue, operator, rvalue, options) {
 
 });
 
+hb.registerHelper('ifOr', function() {
+
+	let options = arguments[arguments.length - 1];
+
+	for(let i = 0, len = arguments.length - 1; i < len; i++)
+	{
+		if(!app.empty(arguments[i]))
+			return options.fn(this);
+	}
+
+	return options.inverse(this);
+
+});
+
 hb.registerHelper('for', function(from, to, incr, options) {
 
 	var accum = '';
@@ -787,6 +1455,18 @@ hb.registerHelper('for', function(from, to, incr, options) {
 		accum += options.fn(i);
 
 	return accum;
+
+});
+
+hb.registerHelper('round', function(number) {
+
+	return Math.round(+number);
+
+});
+
+hb.registerHelper('sLength', function(value) {
+
+	return String(value).length;
 
 });
 
@@ -844,18 +1524,15 @@ hb.registerHelper('encodeSrcURI', function(string) {
 
 });
 
+hb.registerHelper('shortWindowsPath', function(string) {
+
+	return app.shortWindowsPath(string);
+
+});
+
 hb.registerHelper('normalizeNumber', function(value, decimals) {
 
-	value = String(value);
-
-	var num_v = String(value).replace(/.*?(\.|$)/, '').length;
-
-	var num_d = decimals.replace(/.*?(\.|$)/, '').length;
-
-	if(num_d != 0)
-		value = value+(/\./.test(value) ? '' : '.')+('0'.repeat(num_d - num_v));
-
-	return value;
+	return app.normalizeNumber(value, decimals);
 
 });
 
@@ -870,6 +1547,13 @@ hb.registerHelper('htmlQuote', function(string) {
 	return htmlQuote(string);
 
 });
+
+hb.registerHelper('int', function(string) {
+
+	return +string;
+
+});
+
 
 hb.registerHelper('configIsTrue', function(key, value) {
 
@@ -886,7 +1570,7 @@ hb.registerHelper('configIsTrue', function(key, value) {
 
 function pathIsSupported(path)
 {
-	if(inArray(mime.getType(path), compatibleMime) || inArray(fileExtension(path), compressedExtensions.all) || fs.statSync(path).isDirectory())
+	if(compatible.open(path) || fs.statSync(path).isDirectory())
 		return true;
 
 	return false;
@@ -901,7 +1585,9 @@ function openComicDialog(folders = false)
 
 	var dialog = electronRemote.dialog;
 
-	dialog.showOpenDialog({properties: properties, filters: [folders ? {name: language.global.comics} : {name: language.global.comics, extensions: compatibleExtensions}]}).then(function (files) {
+	dialog.showOpenDialog({properties: properties, filters: [folders ? {name: language.global.comics} : {name: language.global.comics, extensions: compatible.open.list()}], securityScopedBookmarks: macosMAS}).then(function (files) {
+
+		fileManager.macosSecurityScopedBookmarks(files);
 
 		if(files.filePaths && files.filePaths[0])
 			openComic(files.filePaths[0]);
@@ -910,11 +1596,13 @@ function openComicDialog(folders = false)
 
 }
 
-function openComic(filePath, animation = true)
+var fromLibrary = true;
+
+function openComic(filePath, animation = true, forceMainPath = false)
 {
 	if(pathIsSupported(filePath))
 	{
-		var selectImage = false, path = false, mainPath = false;
+		let selectImage = false, path = false, mainPath = false;
 
 		if(fs.statSync(filePath).isDirectory())
 		{
@@ -922,7 +1610,7 @@ function openComic(filePath, animation = true)
 		}
 		else
 		{
-			if(inArray(mime.getType(filePath), compatibleMime))
+			if(compatible.image(filePath))
 			{
 				selectImage = true;
 				path = filePath;
@@ -940,15 +1628,38 @@ function openComic(filePath, animation = true)
 		if(mainPath === false)
 			mainPath = path;
 
-		mainPath = config.showFullPathOpened ? p.parse(mainPath).root : mainPath;
+		if(forceMainPath !== false)
+			mainPath = forceMainPath;
 
 		if(onReading)
-			reading.saveReadingProgress();
+			reading.progress.save();
+
+		recentlyOpened.set(mainPath);
+
+		dom.fromLibrary(false);
 
 		if(selectImage)
 			dom.openComic(animation, path, mainPath);
 		else
 			dom.loadIndexPage(animation, path, false, false, mainPath);
+	}
+	else
+	{
+		if(!windowHasLoaded)
+			dom.loadIndexPage(false);
+
+		events.snackbar({
+			key: 'unsupportedFile',
+			text: language.global.unsupportedFile,
+			duration: 6,
+			update: true,
+			buttons: [
+				{
+					text: language.buttons.dismiss,
+					function: 'events.closeSnackbar();',
+				},
+			],
+		});
 	}
 }
 
@@ -961,7 +1672,9 @@ function addComic(folders = false)
 
 	var dialog = electronRemote.dialog;
 
-	dialog.showOpenDialog({properties: properties, filters: [folders ? {name: language.global.comics} : {name: language.global.comics, extensions: compatibleExtensions}]}).then(function(files) {
+	dialog.showOpenDialog({properties: properties, filters: [folders ? {name: language.global.comics} : {name: language.global.comics, extensions: compatible.open.list()}], securityScopedBookmarks: macosMAS}).then(function(files) {
+
+		fileManager.macosSecurityScopedBookmarks(files);
 
 		addComicsToLibrary(files.filePaths);
 
@@ -969,7 +1682,7 @@ function addComic(folders = false)
 
 }
 
-function addComicsToLibrary(files)
+function addComicsToLibrary(files, reload = true)
 {
 	let added = false;
 
@@ -989,7 +1702,7 @@ function addComicsToLibrary(files)
 			}
 			else
 			{
-				if(inArray(mime.getType(filePath), compatibleMime))
+				if(compatible.image(filePath))
 				{
 					filePath = p.dirname(filePath);
 
@@ -999,14 +1712,14 @@ function addComicsToLibrary(files)
 				}
 				else
 				{
-					name = p.basename(filePath).replace(/\.[^\.]*$/, '');
+					name = p.basename(filePath); // .replace(/\.[^\.]*$/, '');
 					path = filePath;
 					compressed = true;
 				}
 			}
 
+			path = relative.path(path);
 			let comics = storage.get('comics');
-
 			let exists = false;
 
 			for(let key in comics)
@@ -1039,10 +1752,10 @@ function addComicsToLibrary(files)
 		}
 	}
 
-	if(added)
+	if(added && reload)
 	{
 		if(onReading)
-			reading.saveReadingProgress();
+			reading.progress.save();
 
 		dom.loadIndexPage(true);
 	}
@@ -1078,3 +1791,6 @@ const NOT_POSSIBLE_WITHOUT_DECOMPRESSING = 1;
 const ERROR_UNZIPPING_THE_FILE = 2;
 const ERROR_READING_THE_FILE = 3;
 const ERROR_RENDERING_THE_FILE = 4;
+
+fileManager.removeTmpVector();
+start();
