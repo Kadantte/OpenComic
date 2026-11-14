@@ -511,6 +511,8 @@ async function getSizes(images)
 		if(imageSizeFromFile === false)
 			imageSizeFromFile = require('image-size-next/fromFile').imageSizeFromFile;
 
+		const path = app.shortWindowsPath(image.image);
+
 		const dimensions = await imageSizeFromFile(path);
 		return applyOrientation(dimensions);
 
