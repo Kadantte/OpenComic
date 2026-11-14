@@ -11,6 +11,7 @@ const images = {
 	avif: p.join(imagesDir, 'hato.profile2.12bpc.yuv422.avif'), // https://github.com/link-u/avif-sample-images
 	avif12yuv444: p.join(imagesDir, 'plum-blossom-large.profile2.12bpc.yuv444.alpha-full.avif'), // https://github.com/link-u/avif-sample-images
 	jp2: p.join(imagesDir, 'sample1.jp2'), // https://filesamples.com/formats/jp2
+	jpegLargeHeader: p.join(imagesDir, 'sample1.large-header.jpg'),
 	heic: p.join(imagesDir, 'classic-car.heic'), // https://heic.digital/samples/
 	heic10: p.join(imagesDir, 'hato.10bpc.heic'), // https://github.com/link-u/avif-sample-images // hato.16bpc.png converted with gimp
 	heic12: p.join(imagesDir, 'hato.12bpc.heic'), // https://github.com/link-u/avif-sample-images // hato.16bpc.png converted with gimp
@@ -131,6 +132,17 @@ describe('Sharp', function() {
 		assert.strictEqual(234, pixelColor.r);
 		assert.strictEqual(226, pixelColor.g);
 		assert.strictEqual(220, pixelColor.b);
+
+	});
+
+	// JPEG with a 20 KB comment segment before the image data
+	it('JPEG with large header', async function() {
+
+		const metadata = await sharp(images.jpegLargeHeader).metadata();
+
+		assert.strictEqual('jpeg', metadata.format);
+		assert.strictEqual(2717, metadata.width);
+		assert.strictEqual(3701, metadata.height);
 
 	});
 

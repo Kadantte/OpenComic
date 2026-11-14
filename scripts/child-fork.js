@@ -14,6 +14,8 @@ class ChildFork
 
 		this.fork = fork(p.join(appDir, '.dist/fork.js'));
 		this.fork.on('message', (event) => this.message(event));
+		this.fork.on('error', (error) => this.error(error));
+		this.fork.on('exit', (code, signal) => this.exit(code, signal));
 
 		this.#idleTimeout = options.idleTimeout || false;
 
@@ -25,6 +27,8 @@ class ChildFork
 	message(data) {
 
 		const arrayIndex = this.promisses.findIndex(item => item.index === data.index);
+		if(arrayIndex === -1) return;
+
 		const promise = this.promisses[arrayIndex];
 		this.promisses.splice(arrayIndex, 1);
 
@@ -50,14 +54,7 @@ class ChildFork
 			...options,
 		});
 
-		let resolve = false, reject = false;
-
-		const promise = new Promise(function(_resolve, _reject){
-
-			resolve = _resolve;
-			reject = _reject;
-
-		});
+		const {promise, resolve, reject} = Promise.withResolvers();
 
 		this.promisses.push({
 			index: index,
@@ -83,6 +80,31 @@ class ChildFork
 
 		if(this.onCloseCallback)
 			this.onCloseCallback();
+	}
+
+	rejectAll(error) {
+
+		for(const promise of this.promisses)
+		{
+			promise.reject(error);
+		}
+
+		this.promisses = [];
+
+	}
+
+	error(error) {
+
+		this.rejectAll(error);
+		this.close();
+
+	}
+
+	exit(code, signal) {
+
+		this.rejectAll(new Error(`Child process exited with code ${code} and signal ${signal}`));
+		this.close();
+
 	}
 
 	closeOnFinish() {

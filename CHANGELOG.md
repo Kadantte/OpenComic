@@ -9,7 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ##### 🐛 Bug Fixes
 
 - UI layout breaks and overflows with long localized labels
-
+- Handle unexpected child process exits (Linux only)
 
 ## [v2.0.0](https://github.com/ollm/OpenComic/releases/tag/v2.0.0) (14-11-2026)
 
