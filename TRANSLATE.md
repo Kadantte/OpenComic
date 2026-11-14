@@ -249,7 +249,7 @@ Translate by [seaque](https://github.com/seaque)
 
 Translate by [Maksym Nedvyha](https://github.com/ImuS663)
 
-`98% | Remain 13 | Translated 645`
+`100% | Remain 0 | Translated 658`
 
 <a href="https://github.com/ollm/OpenComic/blob/master/languages/uk.json"><img src="https://raw.githubusercontent.com/ollm/OpenComic/master/images/translated/uk.svg" /></a>
 

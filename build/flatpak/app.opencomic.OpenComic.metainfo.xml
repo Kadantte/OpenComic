@@ -91,7 +91,7 @@
         <control>gamepad</control>
     </supports>
     <releases>
-        <release version="2.0.0" date="2026-11-12">
+        <release version="2.0.0" date="2026-11-14">
             <description>
                 <p><em>🚀 New Features</em></p>
                 <ul>
